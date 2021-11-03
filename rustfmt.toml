@@ -1,0 +1,18 @@
+# some of these options are still unstable
+unstable_features = true
+# use edition 2018 by default
+edition = "2018"
+# make formatting somewhat more aggressive
+format_code_in_doc_comments = true
+format_macro_matchers = true
+reorder_impl_items = true
+wrap_comments = true
+# error when formatting fails
+error_on_line_overflow = true
+error_on_unformatted = true
+# other conventions (also boils down to "be more aggressive")
+imports_granularity = "Module"
+match_block_trailing_comma = true
+newline_style = "Unix"
+use_field_init_shorthand = true
+use_try_shorthand = true
