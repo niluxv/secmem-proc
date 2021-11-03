@@ -63,6 +63,9 @@ enum ImplHardenError<E: SysErr> {
     Ptrace(#[cfg_attr(feature = "std", source)] E),
     #[cfg(unix)]
     Rlimit(#[cfg_attr(feature = "std", source)] E),
+    // for now unused by necessary to compile on windows
+    #[cfg(windows)]
+    WinAPI(#[cfg_attr(feature = "std", source)] E),
 }
 
 impl<E: SysErr> fmt::Display for ImplHardenError<E> {
@@ -74,6 +77,9 @@ impl<E: SysErr> fmt::Display for ImplHardenError<E> {
             Self::Ptrace(_) => write!(f, "process hardening error in ptrace"),
             #[cfg(unix)]
             Self::Rlimit(_) => write!(f, "process hardening error in resouce limits"),
+            // for now unused by necessary to compile on windows
+            #[cfg(windows)]
+            Self::WinAPI(_) => write!(f, "process hardening error in winapi"),
         }
     }
 }

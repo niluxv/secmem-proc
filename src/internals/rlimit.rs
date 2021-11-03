@@ -2,6 +2,16 @@
 
 use crate::error::SysErr;
 
+cfg_if::cfg_if!(
+    if #[cfg(target_env = "gnu")] {
+        /// Type of rlimit resource identifiers.
+        pub type RlimitResource = u32;
+    } else {
+        /// Type of rlimit resource identifiers.
+        pub type RlimitResource = i32;
+    }
+);
+
 /// Pair of soft and hard limit on a resource.
 #[cfg(unix)]
 pub struct Rlimit(libc::rlimit);
@@ -35,7 +45,7 @@ impl Rlimit {
 ///
 /// # Safety
 /// `resource` must be a valid resource identifier for the platform.
-pub unsafe fn get_rlimit<E: SysErr>(resource: u32, rlim: &mut Rlimit) -> Result<(), E> {
+pub unsafe fn get_rlimit<E: SysErr>(resource: RlimitResource, rlim: &mut Rlimit) -> Result<(), E> {
     let rlim_ptr = &mut rlim.0 as *mut libc::rlimit;
     // SAFETY: `rlim_ptr` points to a valid `libc::rlimit` instance
     let res: i32 = unsafe { libc::setrlimit(resource, rlim_ptr) };
@@ -51,7 +61,7 @@ pub unsafe fn get_rlimit<E: SysErr>(resource: u32, rlim: &mut Rlimit) -> Result<
 ///
 /// # Safety
 /// `resource` must be a valid resource identifier for the platform.
-pub unsafe fn set_rlimit<E: SysErr>(resource: u32, rlim: &Rlimit) -> Result<(), E> {
+pub unsafe fn set_rlimit<E: SysErr>(resource: RlimitResource, rlim: &Rlimit) -> Result<(), E> {
     let res: i32 = unsafe { libc::setrlimit(resource, &rlim.0 as *const libc::rlimit) };
     if res == 0 {
         Ok(())
