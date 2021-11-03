@@ -11,7 +11,8 @@ use crate::internals::rlimit as internals;
 pub use internals::Rlimit;
 
 /// Resources which can be limited using the rlimit interface.
-#[repr(u32)]
+#[cfg_attr(target_env = "gnu", repr(u32))]
+#[cfg_attr(not(target_env = "gnu"), repr(i32))]
 #[non_exhaustive]
 pub enum Resource {
     AddrSpace = libc::RLIMIT_AS,
