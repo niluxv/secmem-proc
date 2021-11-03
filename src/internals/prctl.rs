@@ -19,17 +19,18 @@ unsafe fn prctl_set_traceable<E: SysErr>(arg: u64) -> Result<(), E> {
     }
 }
 
-// #[cfg(target_os = "freebsd")]
-// const PROC_TRACE_CTL_ENABLE: i32 = 1;
-// #[cfg(target_os = "freebsd")]
-// const PROC_TRACE_CTL_DISABLE: i32 = 2;
+#[cfg(target_os = "freebsd")]
+const PROC_TRACE_CTL_ENABLE: i32 = 1;
+#[cfg(target_os = "freebsd")]
+const PROC_TRACE_CTL_DISABLE: i32 = 2;
 #[cfg(target_os = "freebsd")]
 const PROC_TRACE_CTL_DISABLE_EXEC: i32 = 3;
 
 /// Return the process ID of the calling process.
 #[cfg(target_os = "freebsd")]
 fn getpid() -> libc::pid_t {
-    libc::getpid()
+    // always safe to call and can't fail
+    unsafe { libc::getpid() }
 }
 
 /// Set traceability/dumpability of the current process to `arg`. `arg` must be
@@ -37,17 +38,18 @@ fn getpid() -> libc::pid_t {
 /// `PROC_TRACE_CTL_DISABLE`.
 ///
 /// # Safety
-/// `arg` must be `libc::PROC_TRACE_CTL_ENABLE`, `libc::PROC_TRACE_CTL_DISABLE`
-/// or `libc::PROC_TRACE_CTL_DISABLE`.
+/// `arg` must be `PROC_TRACE_CTL_ENABLE`, `PROC_TRACE_CTL_DISABLE`
+/// or `PROC_TRACE_CTL_DISABLE`.
 #[cfg(target_os = "freebsd")]
-unsafe fn prctl_set_traceable<E: SysErr>(arg: i32) -> Result<(), E> {
+unsafe fn prctl_set_traceable<E: SysErr>(mut arg: i32) -> Result<(), E> {
     debug_assert!(
-        arg == libc::PROC_TRACE_CTL_ENABLE
-            || arg == libc::PROC_TRACE_CTL_DISABLE
-            || arg == libc::PROC_TRACE_CTL_DISABLE
+        arg == PROC_TRACE_CTL_ENABLE
+            || arg == PROC_TRACE_CTL_DISABLE
+            || arg == PROC_TRACE_CTL_DISABLE
     );
-    let arg_ptr: *mut c_void = (&mut arg as *mut i32).cast::<libc::c_void>();
-    let pid = getpid();
+    let arg_ptr: *mut libc::c_void = (&mut arg as *mut i32).cast::<libc::c_void>();
+    // `pid_t` is i32 but `id_t` is i64
+    let pid: libc::id_t = getpid().into();
     let res: i32 = unsafe { libc::procctl(libc::P_PID, pid, libc::PROC_TRACE_CTL, arg_ptr) };
     if res == 0 {
         Ok(())
@@ -95,7 +97,7 @@ pub fn set_process_nontraceable<E: SysErr>() -> Result<(), E> {
 #[cfg(target_os = "macos")]
 pub fn set_process_nontraceable<E: SysErr>() -> Result<(), E> {
     // SAFETY: with `PT_DENY_ATTACH` request, all other arguments are ignored
-    let res: i32 = unsafe { ptrace(libc::PT_DENY_ATTACH, 0, std::ptr::null_mut(), 0) };
+    let res: i32 = unsafe { ptrace(libc::PT_DENY_ATTACH, 0, core::ptr::null_mut(), 0) };
     if res == 0 {
         Ok(())
     } else {

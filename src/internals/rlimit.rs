@@ -5,10 +5,10 @@ use crate::error::SysErr;
 cfg_if::cfg_if!(
     if #[cfg(target_env = "gnu")] {
         /// Type of rlimit resource identifiers.
-        type RlimitResource = u32;
+        pub type RlimitResource = u32;
     } else {
         /// Type of rlimit resource identifiers.
-        type RlimitResource = i32;
+        pub type RlimitResource = i32;
     }
 );
 
