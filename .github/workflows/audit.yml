@@ -1,0 +1,19 @@
+# Run cargo audit once every month and create issues for vulnerabilities found
+name: Security Audit
+
+on:
+  schedule:
+    # Run once every month (first of the month at midnight)
+    - cron: '0 0 1 * *'
+
+jobs:
+  audit:
+    name: Cargo Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v1
+      - name: Run cargo audit
+        uses: actions-rs/audit-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
