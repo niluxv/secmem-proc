@@ -28,3 +28,6 @@ dev = []
 cfg-if = "1.0"
 libc = "0.2"
 thiserror = {version = "1.0", optional = true}
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["securitybaseapi", "accctrl", "aclapi", "winerror"] }

@@ -1,6 +1,8 @@
 //! This module defines the `harden_process` function which performs all
 //! possible hardening steps available for the platform.
 
+#[cfg(windows)]
+use crate::error::AllocErr;
 use crate::error::{EmptySystemError, SysErr};
 use core::fmt;
 
@@ -8,8 +10,12 @@ use core::fmt;
 use crate::internals::prctl;
 #[cfg(unix)]
 use crate::internals::rlimit;
+#[cfg(windows)]
+use crate::internals::win32::{self, get_process_handle, AclBox, AclSize};
 #[cfg(feature = "std")]
 use thiserror::Error;
+#[cfg(windows)]
+use winapi::um::accctrl::SE_KERNEL_OBJECT;
 
 /// Error hardening process.
 #[derive(Debug, Clone)]
@@ -35,6 +41,11 @@ impl<E: SysErr> HardenError<E> {
     #[cfg(unix)]
     fn from_rlimit(e: E) -> Self {
         ImplHardenError::Rlimit(e).into()
+    }
+
+    #[cfg(windows)]
+    fn from_winapi(e: E) -> Self {
+        ImplHardenError::WinAPI(e).into()
     }
 }
 
@@ -63,7 +74,6 @@ enum ImplHardenError<E: SysErr> {
     Ptrace(#[cfg_attr(feature = "std", source)] E),
     #[cfg(unix)]
     Rlimit(#[cfg_attr(feature = "std", source)] E),
-    // for now unused by necessary to compile on windows
     #[cfg(windows)]
     WinAPI(#[cfg_attr(feature = "std", source)] E),
 }
@@ -77,7 +87,6 @@ impl<E: SysErr> fmt::Display for ImplHardenError<E> {
             Self::Ptrace(_) => write!(f, "process hardening error in ptrace"),
             #[cfg(unix)]
             Self::Rlimit(_) => write!(f, "process hardening error in resouce limits"),
-            // for now unused by necessary to compile on windows
             #[cfg(windows)]
             Self::WinAPI(_) => write!(f, "process hardening error in winapi"),
         }
@@ -118,6 +127,19 @@ fn disable_core_dumps<E: SysErr>() -> Result<(), HardenError<E>> {
     rlimit::set_coredump_rlimit(&rlim).map_err(HardenError::from_rlimit)
 }
 
+/// Limit user access to process by setting a default restrictive DACL for the
+/// process.
+#[cfg(windows)]
+fn windows_set_dacl<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
+    // size of empty ACL
+    let acl_size = AclSize::new();
+    let acl = acl_size.allocate().map_err(HardenError::from_winapi)?;
+    // SAFETY: `get_process_handle()` gives a valid handle to an `SE_KERNEL_OBJECT`
+    // type object
+    unsafe { acl.set_protected(get_process_handle(), SE_KERNEL_OBJECT) }
+        .map_err(HardenError::from_winapi)
+}
+
 /// Performs all possible hardening steps for the platform.
 ///
 /// # Errors
@@ -149,8 +171,8 @@ pub fn harden_process_other_err<E: SysErr>() -> Result<(), HardenError<E>> {
 /// The system error can be any error implementing the [`SysErr`] trait. See
 /// the [`error`](crate::error) module for more information.
 #[cfg(windows)]
-pub fn harden_process_other_err<E: SysErr>() -> Result<(), HardenError<E>> {
-    Ok(())
+pub fn harden_process_other_err<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
+    windows_set_dacl()
 }
 
 /// Performs all possible hardening steps for the platform.

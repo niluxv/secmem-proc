@@ -80,13 +80,7 @@ pub fn set_coredump_rlimit<E: SysErr>(rlim: &Rlimit) -> Result<(), E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    cfg_if::cfg_if!(
-        if #[cfg(feature = "std")] {
-            use crate::error::StdSystemError as TestSysErr;
-        } else {
-            use crate::error::EmptySystemError as TestSysErr;
-        }
-    );
+    use crate::error::TestSysErr;
 
     #[cfg(unix)]
     #[test]
