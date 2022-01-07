@@ -13,10 +13,11 @@ use winapi::shared::minwindef::DWORD as Dword;
 use winapi::shared::winerror::ERROR_SUCCESS;
 use winapi::um::accctrl::SE_OBJECT_TYPE as SeObjectType;
 use winapi::um::winnt::{
-    ACCESS_ALLOWED_ACE as AccessAllowedAce, ACL as Acl, ACL_REVISION, DACL_SECURITY_INFORMATION,
-    PROTECTED_DACL_SECURITY_INFORMATION, SECURITY_INFORMATION as SecurityInformation,
+    TokenUser as TOKEN_USER, ACCESS_ALLOWED_ACE as AccessAllowedAce, ACL as Acl, ACL_REVISION,
+    DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+    SECURITY_INFORMATION as SecurityInformation, TOKEN_USER as TokenUser,
 };
-use winapi::um::{aclapi, processthreadsapi as ptapi, securitybaseapi as sbapi};
+use winapi::um::{aclapi, handleapi, processthreadsapi as ptapi, securitybaseapi as sbapi};
 
 pub struct SidPtr(*mut c_void);
 
@@ -31,6 +32,140 @@ impl SidPtr {
     /// function allows for a null `SidPtr`.
     fn null() -> Self {
         Self(core::ptr::null_mut())
+    }
+
+    /// Checks whether `self` points to a valid SID.
+    fn is_valid(&self) -> bool {
+        if self.as_ptr().is_null() {
+            return false;
+        }
+        // SAFETY: safe for non-null pointers; checked for the null pointer above
+        unsafe { sbapi::IsValidSid(self.as_ptr()) != 0 }
+    }
+
+    /// Returns the length of the SID that `self` points to.
+    ///
+    /// # Safety
+    /// Requires `self` to point to a valid SID.
+    pub unsafe fn len(&self) -> u32 {
+        debug_assert!(self.is_valid());
+        unsafe { sbapi::GetLengthSid(self.as_ptr()) }
+    }
+}
+
+/// Handle to an access token.
+pub struct AccessToken(*mut c_void);
+
+impl Drop for AccessToken {
+    fn drop(&mut self) {
+        // SAFETY: safe since `self.0` must be an open (access token) handle
+        let res = unsafe { handleapi::CloseHandle(self.0) };
+        assert!(res != 0);
+    }
+}
+
+impl AccessToken {
+    /// Given a process handle, this function returns a pointer to the process
+    /// token of this process.
+    ///
+    /// # Safety
+    /// `handle` must be a valid handle to a process.
+    pub unsafe fn open_process_token<E: SysErr>(
+        handle: *mut c_void,
+        access: Dword,
+    ) -> Result<Self, E> {
+        let mut token_handle: *mut c_void = core::ptr::null_mut();
+        let res = unsafe {
+            ptapi::OpenProcessToken(handle, access, &mut token_handle as *mut *mut c_void)
+        };
+        if res == 0 {
+            Err(E::create())
+        } else {
+            Ok(AccessToken(token_handle))
+        }
+    }
+
+    /// Given a token handle, this function returns the token user structure.
+    /// The returned token user remains valid at least until `token_handle` is
+    /// dropped.
+    pub fn get_token_user<E: SysErr + AllocErr>(&self) -> Result<TokenUserBox, E> {
+        // Get the required length of the buffer
+        let mut length: u32 = 0;
+        let _ = unsafe {
+            sbapi::GetTokenInformation(
+                self.0,
+                TOKEN_USER,
+                core::ptr::null_mut() as *mut c_void,
+                0,
+                &mut length as *mut u32,
+            )
+        };
+
+        // Allocate buffer of this length
+        // SAFETY: 4 is power of 2, size is always sufficiently small
+        let layout = unsafe { Layout::from_size_align_unchecked(length as usize, 4) };
+        let ptr = unsafe { alloc::alloc(layout) };
+        let buf_ptr = match NonNull::new(ptr) {
+            Some(ptr) => ptr,
+            None => return Err(E::alloc_err()),
+        };
+
+        let token_user = TokenUserBox {
+            ptr: buf_ptr,
+            size: length,
+        };
+
+        // Write token user into the allocated buffer
+        let res = unsafe {
+            sbapi::GetTokenInformation(
+                self.0,
+                TOKEN_USER,
+                ptr.cast::<c_void>(),
+                length,
+                &mut length as *mut u32,
+            )
+        };
+
+        if res == 0 {
+            Err(E::create())
+        } else {
+            Ok(token_user)
+        }
+    }
+}
+
+/// Heap allocated structure containing a token user.
+pub struct TokenUserBox {
+    ptr: NonNull<u8>,
+    size: u32,
+}
+
+impl Drop for TokenUserBox {
+    fn drop(&mut self) {
+        // SAFETY: 4 is power of 2, size is always sufficiently small
+        let layout = unsafe { Layout::from_size_align_unchecked(self.size as usize, 4) };
+        unsafe { alloc::dealloc(self.ptr.as_ptr(), layout) };
+    }
+}
+
+impl TokenUserBox {
+    /// Given a token handle, this function returns the token user structure.
+    /// The returned token user remains valid at least until `token` is
+    /// dropped.
+    pub fn from_token<E: SysErr + AllocErr>(token: &AccessToken) -> Result<Self, E> {
+        token.get_token_user()
+    }
+
+    /// Given a token user, this function returns a pointer to the user SID.
+    ///
+    /// # Safety
+    /// The returned `SidPtr` is only valid until `self` is dropped.
+    pub fn sid<'a>(&'a self) -> SidPtr {
+        let ptr: *mut TokenUser = self.ptr.as_ptr().cast::<TokenUser>();
+        // SAFETY: all functions creating `Self` guarantee that the buffer is
+        // initialised with a `TokenUser` structure at the start of the memory range
+        let tokenuser_ref: &'a TokenUser = unsafe { ptr.as_mut().unwrap() };
+        SidPtr(tokenuser_ref.User.Sid)
     }
 }
 
@@ -280,6 +415,9 @@ mod tests {
     use super::*;
     use crate::error::TestSysErr;
     use winapi::um::accctrl::SE_KERNEL_OBJECT;
+    use winapi::um::winnt::{
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE, TOKEN_QUERY,
+    };
 
     #[test]
     fn test_create_drop_aclbox() {
@@ -294,5 +432,52 @@ mod tests {
         // SAFETY: `get_process_handle()` yields a valid handle to this process
         unsafe { acl.set_protected::<TestSysErr>(get_process_handle(), SE_KERNEL_OBJECT) }
             .expect("could not set ACL");
+    }
+
+    #[test]
+    fn test_open_process_token() {
+        let _process_tok = unsafe {
+            AccessToken::open_process_token::<TestSysErr>(get_process_handle(), TOKEN_QUERY)
+        }
+        .expect("could not open process token");
+    }
+
+    #[test]
+    fn test_get_process_user_sid() {
+        let process_tok = unsafe {
+            AccessToken::open_process_token::<TestSysErr>(get_process_handle(), TOKEN_QUERY)
+        }
+        .expect("could not open process token");
+        let tok_user = process_tok
+            .get_token_user::<TestSysErr>()
+            .expect("could not retrieve token user");
+        let sidptr = tok_user.sid();
+        // It seems the SID remains valid after closing the process token
+        core::mem::drop(process_tok);
+        assert!(sidptr.is_valid());
+    }
+
+    #[test]
+    fn test_aclbox_allowed_ace() {
+        let process_tok = unsafe {
+            AccessToken::open_process_token::<TestSysErr>(get_process_handle(), TOKEN_QUERY)
+        }
+        .expect("could not open process token");
+        let tok_user = process_tok
+            .get_token_user::<TestSysErr>()
+            .expect("could not retrieve token user");
+        let sid = tok_user.sid();
+        assert!(sid.is_valid());
+
+        let mut size = AclSize::new();
+        size.add_allowed_ace(unsafe { sid.len() });
+        let mut acl: AclBox = size.allocate::<TestSysErr>().expect("could not create ACL");
+        unsafe {
+            acl.add_allowed_ace::<TestSysErr>(
+                SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                sid,
+            )
+        }
+        .expect("could not add ACE to ACL");
     }
 }
