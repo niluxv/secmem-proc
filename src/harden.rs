@@ -10,12 +10,8 @@ use core::fmt;
 use crate::internals::prctl;
 #[cfg(unix)]
 use crate::internals::rlimit;
-#[cfg(windows)]
-use crate::internals::win32::{self, get_process_handle, AclBox, AclSize};
 #[cfg(feature = "std")]
 use thiserror::Error;
-#[cfg(windows)]
-use winapi::um::accctrl::SE_KERNEL_OBJECT;
 
 /// Error hardening process.
 #[derive(Debug, Clone)]
@@ -131,9 +127,35 @@ fn disable_core_dumps<E: SysErr>() -> Result<(), HardenError<E>> {
 /// process.
 #[cfg(windows)]
 fn windows_set_dacl<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
-    // size of empty ACL
-    let acl_size = AclSize::new();
-    let acl = acl_size.allocate().map_err(HardenError::from_winapi)?;
+    use crate::internals::win32::{get_process_handle, AccessToken, AclBox, AclSize};
+    use winapi::um::accctrl::SE_KERNEL_OBJECT;
+    use winapi::um::winnt::{
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE, TOKEN_QUERY,
+    };
+
+    // First obtain the SID of the current user
+    // SAFETY: `get_process_handle()` yields a valid process handle
+    let process_tok = unsafe { AccessToken::open_process_token(get_process_handle(), TOKEN_QUERY) }
+        .map_err(HardenError::from_winapi)?;
+    let tok_user = process_tok
+        .get_token_user()
+        .map_err(HardenError::from_winapi)?;
+    let sid = tok_user.sid();
+
+    // Now compute the size of the ACL
+    let mut size = AclSize::new();
+    size.add_allowed_ace(unsafe { sid.len() });
+    // Create the ACL, with some quite minimal allowed accesses
+    let mut acl: AclBox = size.allocate().map_err(HardenError::from_winapi)?;
+    unsafe {
+        acl.add_allowed_ace(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+            sid,
+        )
+    }
+    .map_err(HardenError::from_winapi)?;
+
+    // Apply the ACL to the current process
     // SAFETY: `get_process_handle()` gives a valid handle to an `SE_KERNEL_OBJECT`
     // type object
     unsafe { acl.set_protected(get_process_handle(), SE_KERNEL_OBJECT) }
