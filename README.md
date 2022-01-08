@@ -41,11 +41,12 @@ If you have the `std` feature enabled you can get more informative errors using 
  - Disable ptrace and core dumps on the process on freebsd using procctl
  - Disable ptrace on macos using ptrace
  - Disable core dumps for the process on posix systems using rlimit
+ - Set restricted DACL for the process on windows
 
 
 ## TODOs
 
- - windows support (DACL)
+ - add API allowing to set a custom DACL on windows
  - improve tests (how exactly?)
 
 
