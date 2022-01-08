@@ -108,13 +108,7 @@ pub fn set_process_nontraceable<E: SysErr>() -> Result<(), E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    cfg_if::cfg_if!(
-        if #[cfg(feature = "std")] {
-            use crate::error::StdSystemError as TestSysErr;
-        } else {
-            use crate::error::EmptySystemError as TestSysErr;
-        }
-    );
+    use crate::error::TestSysErr;
 
     #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
     #[test]

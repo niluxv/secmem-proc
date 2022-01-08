@@ -18,6 +18,14 @@ pub trait SysErr: fmt::Debug + fmt::Display {
     fn from_code(code: i32) -> Self;
 }
 
+/// Trait describing (system) allocation errors.
+///
+/// Mostly meant as an extension trait to [`SysErr`] to allow for allocation
+/// errors.
+pub trait AllocErr: fmt::Debug + fmt::Display {
+    fn alloc_err() -> Self;
+}
+
 /// System error containing no information.
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "std", derive(Error))]
@@ -39,6 +47,12 @@ impl SysErr for EmptySystemError {
     }
 }
 
+impl AllocErr for EmptySystemError {
+    fn alloc_err() -> Self {
+        Self
+    }
+}
+
 /// System error containing the error code, as a [`std::io::Error`].
 #[cfg(feature = "std")]
 pub type StdSystemError = std::io::Error;
@@ -53,3 +67,19 @@ impl SysErr for StdSystemError {
         Self::from_raw_os_error(code)
     }
 }
+
+#[cfg(feature = "std")]
+impl AllocErr for StdSystemError {
+    fn alloc_err() -> Self {
+        std::io::ErrorKind::OutOfMemory.into()
+    }
+}
+
+// Prefered error type in (internals) tests.
+cfg_if::cfg_if!(
+    if #[cfg(feature = "std")] {
+        pub(crate) use StdSystemError as TestSysErr;
+    } else {
+        pub(crate) use EmptySystemError as TestSysErr;
+    }
+);

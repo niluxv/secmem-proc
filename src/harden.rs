@@ -1,6 +1,8 @@
 //! This module defines the `harden_process` function which performs all
 //! possible hardening steps available for the platform.
 
+#[cfg(windows)]
+use crate::error::AllocErr;
 use crate::error::{EmptySystemError, SysErr};
 use core::fmt;
 
@@ -36,6 +38,11 @@ impl<E: SysErr> HardenError<E> {
     fn from_rlimit(e: E) -> Self {
         ImplHardenError::Rlimit(e).into()
     }
+
+    #[cfg(windows)]
+    fn from_winapi(e: E) -> Self {
+        ImplHardenError::WinAPI(e).into()
+    }
 }
 
 impl<E: SysErr> fmt::Display for HardenError<E> {
@@ -63,7 +70,6 @@ enum ImplHardenError<E: SysErr> {
     Ptrace(#[cfg_attr(feature = "std", source)] E),
     #[cfg(unix)]
     Rlimit(#[cfg_attr(feature = "std", source)] E),
-    // for now unused by necessary to compile on windows
     #[cfg(windows)]
     WinAPI(#[cfg_attr(feature = "std", source)] E),
 }
@@ -77,7 +83,6 @@ impl<E: SysErr> fmt::Display for ImplHardenError<E> {
             Self::Ptrace(_) => write!(f, "process hardening error in ptrace"),
             #[cfg(unix)]
             Self::Rlimit(_) => write!(f, "process hardening error in resouce limits"),
-            // for now unused by necessary to compile on windows
             #[cfg(windows)]
             Self::WinAPI(_) => write!(f, "process hardening error in winapi"),
         }
@@ -118,6 +123,45 @@ fn disable_core_dumps<E: SysErr>() -> Result<(), HardenError<E>> {
     rlimit::set_coredump_rlimit(&rlim).map_err(HardenError::from_rlimit)
 }
 
+/// Limit user access to process by setting a default restrictive DACL for the
+/// process.
+#[cfg(windows)]
+fn windows_set_dacl<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
+    use crate::internals::win32::{get_process_handle, AccessToken, AclBox, AclSize};
+    use winapi::um::accctrl::SE_KERNEL_OBJECT;
+    use winapi::um::winnt::{
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE, TOKEN_QUERY,
+    };
+
+    // First obtain the SID of the current user
+    // SAFETY: `get_process_handle()` yields a valid process handle
+    let process_tok = unsafe { AccessToken::open_process_token(get_process_handle(), TOKEN_QUERY) }
+        .map_err(HardenError::from_winapi)?;
+    let tok_user = process_tok
+        .get_token_user()
+        .map_err(HardenError::from_winapi)?;
+    let sid = tok_user.sid();
+
+    // Now compute the size of the ACL
+    let mut size = AclSize::new();
+    size.add_allowed_ace(unsafe { sid.len() });
+    // Create the ACL, with some quite minimal allowed accesses
+    let mut acl: AclBox = size.allocate().map_err(HardenError::from_winapi)?;
+    unsafe {
+        acl.add_allowed_ace(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+            sid,
+        )
+    }
+    .map_err(HardenError::from_winapi)?;
+
+    // Apply the ACL to the current process
+    // SAFETY: `get_process_handle()` gives a valid handle to an `SE_KERNEL_OBJECT`
+    // type object
+    unsafe { acl.set_protected(get_process_handle(), SE_KERNEL_OBJECT) }
+        .map_err(HardenError::from_winapi)
+}
+
 /// Performs all possible hardening steps for the platform.
 ///
 /// # Errors
@@ -149,8 +193,8 @@ pub fn harden_process_other_err<E: SysErr>() -> Result<(), HardenError<E>> {
 /// The system error can be any error implementing the [`SysErr`] trait. See
 /// the [`error`](crate::error) module for more information.
 #[cfg(windows)]
-pub fn harden_process_other_err<E: SysErr>() -> Result<(), HardenError<E>> {
-    Ok(())
+pub fn harden_process_other_err<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
+    windows_set_dacl()
 }
 
 /// Performs all possible hardening steps for the platform.

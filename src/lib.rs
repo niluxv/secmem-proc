@@ -55,6 +55,9 @@
 //! - Disable ptrace on macos using ptrace
 //! - Disable core dumps for the process on posix systems using rlimit
 
+#[cfg(windows)]
+extern crate alloc;
+
 mod internals;
 
 pub mod error;
