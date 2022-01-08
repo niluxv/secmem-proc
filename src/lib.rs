@@ -54,6 +54,7 @@
 //! - Disable ptrace and core dumps on the process on freebsd using procctl
 //! - Disable ptrace on macos using ptrace
 //! - Disable core dumps for the process on posix systems using rlimit
+//! - Set restricted DACL for the process on windows
 
 #[cfg(windows)]
 extern crate alloc;
