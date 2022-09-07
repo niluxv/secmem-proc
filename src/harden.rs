@@ -127,38 +127,22 @@ fn disable_core_dumps<E: SysErr>() -> Result<(), HardenError<E>> {
 /// process.
 #[cfg(windows)]
 fn windows_set_dacl<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
-    use crate::internals::win32::{get_process_handle, AccessToken, AclBox, AclSize};
-    use winapi::um::accctrl::SE_KERNEL_OBJECT;
-    use winapi::um::winnt::{
-        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE, TOKEN_QUERY,
-    };
+    use winapi::um::winnt::{PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE};
+
+    use crate::win_acl::TokenUser;
 
     // First obtain the SID of the current user
-    // SAFETY: `get_process_handle()` yields a valid process handle
-    let process_tok = unsafe { AccessToken::open_process_token(get_process_handle(), TOKEN_QUERY) }
-        .map_err(HardenError::from_winapi)?;
-    let tok_user = process_tok
-        .get_token_user()
-        .map_err(HardenError::from_winapi)?;
-    let sid = tok_user.sid();
+    let user = TokenUser::process_user().map_err(HardenError::from_winapi)?;
+    let sid = user.sid();
 
-    // Now compute the size of the ACL
-    let mut size = AclSize::new();
-    size.add_allowed_ace(unsafe { sid.len() });
-    // Create the ACL, with some quite minimal allowed accesses
-    let mut acl: AclBox = size.allocate().map_err(HardenError::from_winapi)?;
-    unsafe {
-        acl.add_allowed_ace(
-            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
-            sid,
-        )
-    }
-    .map_err(HardenError::from_winapi)?;
+    // Now specify the ACL we want to create
+    let acl_spec = crate::win_acl::EmptyAcl;
+    let access_mask = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE;
+    let acl_spec = crate::win_acl::AddAllowAceAcl::new(acl_spec, access_mask, sid);
 
-    // Apply the ACL to the current process
-    // SAFETY: `get_process_handle()` gives a valid handle to an `SE_KERNEL_OBJECT`
-    // type object
-    unsafe { acl.set_protected(get_process_handle(), SE_KERNEL_OBJECT) }
+    // Create ACL and set as process DACL
+    let acl = acl_spec.create().map_err(HardenError::from_winapi)?;
+    acl.set_process_dacl_protected()
         .map_err(HardenError::from_winapi)
 }
 

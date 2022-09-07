@@ -76,6 +76,7 @@ impl AllocErr for StdSystemError {
 }
 
 // Prefered error type in (internals) tests.
+#[cfg(test)]
 cfg_if::cfg_if!(
     if #[cfg(feature = "std")] {
         pub(crate) use StdSystemError as TestSysErr;

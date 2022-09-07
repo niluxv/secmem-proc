@@ -3,6 +3,7 @@
 #![deny(rust_2018_idioms)]
 #![warn(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 #![warn(clippy::must_use_candidate)]
+#![allow(clippy::needless_lifetimes)]
 //! `secmem-proc` is a crate designed to harden a process against
 //! *low-privileged* attackers running on the same system trying to obtain
 //! secret memory contents of the current process. More specifically, the crate
@@ -66,6 +67,8 @@ pub mod error;
 pub mod harden;
 #[cfg(all(feature = "rlimit", unix))]
 pub mod rlimit;
+#[cfg(windows)]
+pub mod win_acl;
 
 pub use harden::harden_process;
 #[cfg(feature = "std")]
