@@ -1,4 +1,49 @@
-//! Safer Windows DACL API.
+//! Safe Windows DACL API.
+//!
+//! This API can be used to create and set a custom DACL on Windows, for the
+//! case where the default one set by
+//! [`harden_process`](crate::harden::harden_process) is not suitable (most
+//! likely too strict).
+//!
+//! # Examples
+//! In the next example we grant the `PROCESS_CREATE_PROCESS` permissions in
+//! addition to the default ones, to the process user (i.e. the user who is
+//! running the program). This allows another program running as the same user
+//! to attach a process as a subprocess to your process (potentially
+//! dangerous...).
+//!
+//! ```
+//! #[cfg(windows)]
+//! fn harden_process() -> Result<(), secmem_proc::error::EmptySystemError> {
+//!     use winapi::um::winnt::{
+//!         PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+//!         SYNCHRONIZE,
+//!     };
+//!
+//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
+//!
+//!     // First obtain the SID of the process user
+//!     let user = TokenUser::process_user()?;
+//!     let sid = user.sid();
+//!
+//!     // Now specify the ACL we want to create
+//!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else
+//!     let acl_spec = EmptyAcl;
+//!     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
+//!         | PROCESS_TERMINATE
+//!         | SYNCHRONIZE
+//!         | PROCESS_CREATE_PROCESS;
+//!     let acl_spec = AddAllowAceAcl::new(acl_spec, access_mask, sid);
+//!
+//!     // Create ACL and set as process DACL
+//!     let acl = acl_spec.create()?;
+//!     acl.set_process_dacl_protected()
+//! }
+//!
+//! // call `harden_process` as defined above in `main`
+//! # #[cfg(windows)]
+//! # harden_process();
+//! ```
 
 use crate::error::{AllocErr, SysErr};
 use crate::internals::win32 as internals;

@@ -19,6 +19,14 @@
 //! it. Therefore you are advised to only harden release builds, not debug
 //! builds.
 //!
+//! # Windows
+//! On Windows, [`harden_process`] sets a severly restricted DACL for the
+//! process. (More precisely, only the `PROCESS_QUERY_LIMITED_INFORMATION`,
+//! `PROCESS_TERMINATE` and `SYNCHRONIZE` permissions are enabled.) This could
+//! be too restrictive for the application to function correctly. When more
+//! permissions are required, the safe API in the [`win_acl`] module can be used
+//! to create and set a custom DACL instead.
+//!
 //! # Examples
 //! In the below example the main function of some application calls the main
 //! hardening function provided by this crate: `harden_process`. This will
@@ -41,6 +49,50 @@
 //!
 //! If you have the `std` feature enabled you can get more informative errors
 //! using [`harden_process_std_err`] instead of [`harden_process`].
+//!
+//! In the next example we use the API in [`win_acl`] to set a custom DACL on
+//! Windows. In the example we grant the `PROCESS_CREATE_THREAD` permissions in
+//! addition to the default ones.
+//!
+//! ```
+//! #[cfg(not(windows))]
+//! use secmem_proc::harden_process;
+//!
+//! #[cfg(windows)]
+//! fn harden_process() -> Result<(), secmem_proc::error::EmptySystemError> {
+//!     use winapi::um::winnt::{
+//!         PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+//!         SYNCHRONIZE,
+//!     };
+//!
+//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
+//!
+//!     // First obtain the SID of the process user
+//!     let user = TokenUser::process_user()?;
+//!     let sid = user.sid();
+//!
+//!     // Now specify the ACL we want to create
+//!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else
+//!     let acl_spec = EmptyAcl;
+//!     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
+//!         | PROCESS_TERMINATE
+//!         | SYNCHRONIZE
+//!         | PROCESS_CREATE_THREAD;
+//!     let acl_spec = AddAllowAceAcl::new(acl_spec, access_mask, sid);
+//!
+//!     // Create ACL and set as process DACL
+//!     let acl = acl_spec.create()?;
+//!     acl.set_process_dacl_protected()
+//! }
+//!
+//! fn main() {
+//!     if harden_process().is_err() {
+//!         println!("ERROR: could not harden process, exiting");
+//!         return;
+//!     }
+//!     // rest of your program
+//! }
+//! ```
 //!
 //! # Cargo features
 //! - `std` (default): Enable functionality that requires `std`. Currently only
