@@ -127,7 +127,9 @@ fn disable_core_dumps<E: SysErr>() -> Result<(), HardenError<E>> {
 /// process.
 #[cfg(windows)]
 fn windows_set_dacl<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
-    use winapi::um::winnt::{PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE};
+    use windows::Win32::System::Threading::{
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+    };
 
     use crate::win_acl::TokenUser;
 
@@ -137,7 +139,7 @@ fn windows_set_dacl<E: SysErr + AllocErr>() -> Result<(), HardenError<E>> {
 
     // Now specify the ACL we want to create
     let acl_spec = crate::win_acl::EmptyAcl;
-    let access_mask = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE;
+    let access_mask = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | PROCESS_SYNCHRONIZE;
     let acl_spec = crate::win_acl::AddAllowAceAcl::new(acl_spec, access_mask, sid);
 
     // Create ACL and set as process DACL

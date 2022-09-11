@@ -7,27 +7,56 @@
 use crate::error::{AllocErr, SysErr};
 use alloc::alloc;
 use core::alloc::Layout;
+use core::ffi::c_void;
 use core::ptr::NonNull;
-use winapi::ctypes::c_void;
-use winapi::shared::minwindef::DWORD as Dword;
-use winapi::shared::winerror::ERROR_SUCCESS;
-use winapi::um::accctrl::SE_OBJECT_TYPE as SeObjectType;
-use winapi::um::winnt::{
-    TokenUser as TOKEN_USER, ACCESS_ALLOWED_ACE as AccessAllowedAce, ACL as Acl, ACL_REVISION,
-    DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
-    SECURITY_INFORMATION as SecurityInformation, TOKEN_USER as TokenUser,
-};
-use winapi::um::{aclapi, handleapi, processthreadsapi as ptapi, securitybaseapi as sbapi};
+
+mod win {
+    // import functions
+    pub(super) use windows::Win32::Foundation::CloseHandle;
+    pub(super) use windows::Win32::Security::Authorization::SetSecurityInfo;
+    pub(super) use windows::Win32::Security::{
+        AddAccessAllowedAce, GetLengthSid, GetTokenInformation, InitializeAcl, IsValidSid,
+    };
+    pub(super) use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    // import structures
+    pub(super) use windows::Win32::Foundation::{HANDLE, PSID, WIN32_ERROR};
+    pub(super) use windows::Win32::Security::Authorization::SE_OBJECT_TYPE;
+    pub(super) use windows::Win32::Security::{
+        ACCESS_ALLOWED_ACE, ACE_REVISION, ACL, OBJECT_SECURITY_INFORMATION, TOKEN_ACCESS_MASK,
+        TOKEN_USER,
+    };
+    pub(super) use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
+
+    // import constants
+    pub(super) use windows::Win32::Foundation::ERROR_SUCCESS;
+    pub(super) use windows::Win32::Security::{
+        TokenUser, ACL_REVISION, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
+    };
+}
 
 /// Pointer to a SID.
-pub struct SidPtr(*mut c_void);
+#[derive(Copy, Clone, Debug)]
+pub struct SidPtr(win::PSID);
+
+impl From<SidPtr> for win::PSID {
+    fn from(ptr: SidPtr) -> Self {
+        ptr.0
+    }
+}
+
+impl From<&SidPtr> for win::PSID {
+    fn from(ptr: &SidPtr) -> Self {
+        (*ptr).0
+    }
+}
 
 impl SidPtr {
-    /// Get raw pointer (for FFI).
-    #[must_use]
-    fn as_ptr(&self) -> *mut c_void {
-        self.0
-    }
+    //     /// Get raw pointer (for FFI).
+    //     #[must_use]
+    //     fn as_ptr(&self) -> *mut c_void {
+    //         self.0
+    //     }
 
     /// # Safety
     /// Not unsafe in itself to call because functions which take a `SidPtr` are
@@ -35,17 +64,18 @@ impl SidPtr {
     /// function allows for a null `SidPtr`.
     #[must_use]
     fn null() -> Self {
-        Self(core::ptr::null_mut())
+        Self(win::PSID(core::ptr::null_mut()))
     }
 
     /// Checks whether `self` points to a valid SID.
     #[must_use]
     fn is_valid(&self) -> bool {
-        if self.as_ptr().is_null() {
+        if self.0.is_invalid() {
             return false;
         }
-        // SAFETY: safe for non-null pointers; checked for the null pointer above
-        unsafe { sbapi::IsValidSid(self.as_ptr()) != 0 }
+        // SAFETY: `IsValidSid` requires non-null `PSID`; this is handled by the
+        // `is_invalid` check above
+        unsafe { win::IsValidSid(self) }.as_bool()
     }
 
     /// Returns the length of the SID that `self` points to.
@@ -55,12 +85,13 @@ impl SidPtr {
     #[must_use]
     pub unsafe fn len(&self) -> u32 {
         debug_assert!(self.is_valid());
-        unsafe { sbapi::GetLengthSid(self.as_ptr()) }
+        unsafe { win::GetLengthSid(self) }
     }
 }
 
 /// A pointer to a SID valid for lifetime `'a`.
 #[allow(clippy::len_without_is_empty)]
+#[derive(Copy, Clone, Debug)]
 pub struct SidRef<'a> {
     ptr: SidPtr,
     lifetime: core::marker::PhantomData<&'a [u8]>,
@@ -69,8 +100,8 @@ pub struct SidRef<'a> {
 impl<'a> SidRef<'a> {
     /// Get the raw pointer to the SID, for FFI.
     #[must_use]
-    fn as_raw(&self) -> *mut c_void {
-        self.ptr.0
+    fn as_ptr(&self) -> SidPtr {
+        self.ptr
     }
 
     /// Cast SID pointer into SID reference.
@@ -88,7 +119,7 @@ impl<'a> SidRef<'a> {
 
     /// Returns the length of the SID that `self` points to.
     #[must_use]
-    pub fn len(&self) -> Dword {
+    pub fn len(&self) -> u32 {
         // SAFETY: `SidRef` must always point to a valid SID
         unsafe { self.ptr.len() }
     }
@@ -102,13 +133,13 @@ impl<'a> SidRef<'a> {
 }
 
 /// Handle to an access token.
-pub struct AccessToken(*mut c_void);
+pub struct AccessToken(win::HANDLE);
 
 impl Drop for AccessToken {
     fn drop(&mut self) {
         // SAFETY: safe since `self.0` must be an open (access token) handle
-        let res = unsafe { handleapi::CloseHandle(self.0) };
-        assert!(res != 0);
+        let res = unsafe { win::CloseHandle(self.0) };
+        res.unwrap()
     }
 }
 
@@ -119,17 +150,16 @@ impl AccessToken {
     /// # Safety
     /// `handle` must be a valid handle to a process.
     pub unsafe fn open_process_token<E: SysErr>(
-        handle: *mut c_void,
-        access: Dword,
+        handle: win::HANDLE,
+        access: win::TOKEN_ACCESS_MASK,
     ) -> Result<Self, E> {
-        let mut token_handle: *mut c_void = core::ptr::null_mut();
-        let res = unsafe {
-            ptapi::OpenProcessToken(handle, access, &mut token_handle as *mut *mut c_void)
-        };
-        if res == 0 {
-            Err(E::create())
-        } else {
+        let mut token_handle = win::HANDLE(0);
+        let res =
+            unsafe { win::OpenProcessToken(handle, access, &mut token_handle as *mut win::HANDLE) };
+        if res.as_bool() {
             Ok(AccessToken(token_handle))
+        } else {
+            Err(E::create())
         }
     }
 
@@ -138,9 +168,9 @@ impl AccessToken {
         // Get the required length of the buffer
         let mut length: u32 = 0;
         let _ = unsafe {
-            sbapi::GetTokenInformation(
+            win::GetTokenInformation(
                 self.0,
-                TOKEN_USER,
+                win::TokenUser,
                 core::ptr::null_mut() as *mut c_void,
                 0,
                 &mut length as *mut u32,
@@ -163,19 +193,19 @@ impl AccessToken {
 
         // Write token user into the allocated buffer
         let res = unsafe {
-            sbapi::GetTokenInformation(
+            win::GetTokenInformation(
                 self.0,
-                TOKEN_USER,
+                win::TokenUser,
                 ptr.cast::<c_void>(),
                 length,
                 &mut length as *mut u32,
             )
         };
 
-        if res == 0 {
-            Err(E::create())
-        } else {
+        if res.as_bool() {
             Ok(token_user)
+        } else {
+            Err(E::create())
         }
     }
 }
@@ -203,10 +233,11 @@ impl TokenUserBox {
     /// Given a token user, this function returns a reference to the user SID.
     #[must_use]
     pub fn sid<'a>(&'a self) -> SidRef<'a> {
-        let ptr: *mut TokenUser = self.ptr.as_ptr().cast::<TokenUser>();
+        let ptr: *mut win::TOKEN_USER = self.ptr.as_ptr().cast();
         // SAFETY: all functions creating `Self` guarantee that the buffer is
-        // initialised with a `TokenUser` structure at the start of the memory range
-        let tokenuser_ref: &'a TokenUser = unsafe { ptr.as_mut().unwrap() };
+        // initialised with a `win::TOKEN_USER` structure at the start of the memory
+        // range
+        let tokenuser_ref: &'a win::TOKEN_USER = unsafe { ptr.as_mut().unwrap() };
         let sidptr = SidPtr(tokenuser_ref.User.Sid);
         // SAFETY: `sidptr` points to a SID in the `TokenUserBox` allocation, so the SID
         // pointer is valid at least for the borrow lifetime of `self`
@@ -217,43 +248,42 @@ impl TokenUserBox {
 /// Add access allowed ACE to the ACL pointed to by `acl`.
 ///
 /// # Safety
-/// - `acl` has to point to a valid Acl with write access
+/// - `acl` has to point to a valid ACL with write access
 ///
 /// # Errors
 /// Errors if
-/// - the Acl pointed to by `acl` doesn't have enough space for the Ace
+/// - the ACL pointed to by `acl` doesn't have enough space for the Ace
 /// - `revision` is not a valid revision
 /// - `access_mask` is not a valid access_mask
 unsafe fn add_allowed_ace<E: SysErr>(
-    acl: *mut Acl,
-    revision: Dword,
-    access_mask: Dword,
+    acl: *mut win::ACL,
+    revision: win::ACE_REVISION,
+    access_mask: win::PROCESS_ACCESS_RIGHTS,
     sid: SidRef<'_>,
 ) -> Result<(), E> {
     // SAFETY: uphold by caller
-    let res = unsafe { sbapi::AddAccessAllowedAce(acl, revision, access_mask, sid.as_raw()) };
-    if res == 0 {
-        Err(E::create())
-    } else {
+    let res = unsafe { win::AddAccessAllowedAce(acl, revision.0, access_mask.0, sid.as_ptr()) };
+    if res.as_bool() {
         Ok(())
+    } else {
+        Err(E::create())
     }
 }
 
 /// # Safety
-/// - `acl` must be valid for a `acl_len` byte write, Dword aligned (i.e. 4 byte
-///   aligned)
-/// - `acl_len` must be Dword aligned (i.e. a multiple of 4)
+/// - `acl` must be valid for a `acl_len` byte write, 4 byte aligned
+/// - `acl_len` must be a multiple of 4
 unsafe fn initialize_acl<E: SysErr>(
-    acl: *mut Acl,
-    acl_len: Dword,
-    revision: Dword,
+    acl: *mut win::ACL,
+    acl_len: u32,
+    revision: win::ACE_REVISION,
 ) -> Result<(), E> {
     // SAFETY: uphold by caller
-    let res = unsafe { sbapi::InitializeAcl(acl, acl_len, revision) };
-    if res == 0 {
-        Err(E::create())
-    } else {
+    let res = unsafe { win::InitializeAcl(acl, acl_len, revision.0) };
+    if res.as_bool() {
         Ok(())
+    } else {
+        Err(E::create())
     }
 }
 
@@ -266,46 +296,37 @@ unsafe fn initialize_acl<E: SysErr>(
 /// and <https://docs.microsoft.com/en-us/windows/win32/secauthz/security-information> for more
 /// information.
 unsafe fn set_security_info<E: SysErr>(
-    handle: *mut c_void,
-    obj_type: SeObjectType,
-    sec_info: SecurityInformation,
+    handle: win::HANDLE,
+    obj_type: win::SE_OBJECT_TYPE,
+    sec_info: win::OBJECT_SECURITY_INFORMATION,
     owner: SidPtr,
     group: SidPtr,
-    dacl: *mut Acl,
-    sacl: *mut Acl,
+    dacl: *const win::ACL,
+    sacl: *const win::ACL,
 ) -> Result<(), E> {
-    let res = unsafe {
-        aclapi::SetSecurityInfo(
-            handle,
-            obj_type,
-            sec_info,
-            owner.as_ptr(),
-            group.as_ptr(),
-            dacl,
-            sacl,
-        )
-    };
-    if res == ERROR_SUCCESS {
+    let res =
+        unsafe { win::SetSecurityInfo(handle, obj_type, sec_info.0, owner, group, dacl, sacl) };
+    if win::WIN32_ERROR(res) == win::ERROR_SUCCESS {
         Ok(())
     } else {
-        // standard library also converts Dword winapi errors into `i32` using `as`
+        // standard library also converts `u32` winapi errors into `i32` using `as`
         Err(E::from_code(res as i32))
     }
 }
 
 /// Creates pseudo-handle to the current process. Needs not be closed.
 #[must_use]
-pub unsafe fn get_process_handle() -> *mut c_void {
+pub unsafe fn get_process_handle() -> win::HANDLE {
     // calling `GetCurrentProcess` just returns a constant, is safe and cannot fail
-    unsafe { ptapi::GetCurrentProcess() }
+    unsafe { win::GetCurrentProcess() }
 }
 
 /// Heap allocated ACL.
 pub struct AclBox {
-    // SAFETY INVARIANT: must be 4 byte (Dword) aligned, valid for `size` byte write
-    ptr: NonNull<Acl>,
+    // SAFETY INVARIANT: must be 4 byte (`u32`) aligned, valid for `size` byte write
+    ptr: NonNull<win::ACL>,
     // SAFETY INVARIANT: must be a multiple of 4, immutable
-    size: Dword,
+    size: u32,
 }
 
 impl Drop for AclBox {
@@ -330,7 +351,7 @@ impl AclBox {
     /// # Errors
     /// Errors when system is out of memory, or when `size` doesn't fit an empty
     /// ACL.
-    pub unsafe fn new<E: SysErr + AllocErr>(size: Dword) -> Result<Self, E> {
+    pub unsafe fn new<E: SysErr + AllocErr>(size: u32) -> Result<Self, E> {
         let mut allocation = unsafe { Self::alloc(size) }?;
         allocation.initialize()?;
         Ok(allocation)
@@ -342,7 +363,7 @@ impl AclBox {
     /// # Safety
     /// `size` has to be non-zero and a multiple of 4.
     /// Call `self.initialize()` before using the returned `Self`
-    unsafe fn alloc<E: AllocErr>(size: Dword) -> Result<Self, E> {
+    unsafe fn alloc<E: AllocErr>(size: u32) -> Result<Self, E> {
         debug_assert!(size % 4 == 0);
         debug_assert!(size != 0);
 
@@ -350,7 +371,7 @@ impl AclBox {
         // doesn't overflow
         let layout = unsafe { Layout::from_size_align_unchecked(size as usize, 4) };
         // SAFETY: `layout` has non-zero size since `size != 0`
-        let ptr = unsafe { alloc::alloc(layout) }.cast::<Acl>();
+        let ptr = unsafe { alloc::alloc(layout) }.cast::<win::ACL>();
         match NonNull::new(ptr) {
             Some(ptr) => Ok(Self { ptr, size }),
             None => Err(E::alloc_err()),
@@ -361,7 +382,7 @@ impl AclBox {
     fn initialize<E: SysErr>(&mut self) -> Result<(), E> {
         // SAFETY: `self.ptr` is valid for `self.size` byte writes, both are 4 byte
         // aligned by struct safety invariants
-        unsafe { initialize_acl(self.ptr.as_ptr(), self.size, ACL_REVISION.into()) }
+        unsafe { initialize_acl(self.ptr.as_ptr(), self.size, win::ACL_REVISION.into()) }
     }
 
     /// Add allowed ACE to the ACL. `access_mask` must be a valid access mask.
@@ -370,12 +391,19 @@ impl AclBox {
     /// - `self` must be large enough to add this ACE.
     pub unsafe fn add_allowed_ace<E: SysErr>(
         &mut self,
-        access_mask: Dword,
+        access_mask: win::PROCESS_ACCESS_RIGHTS,
         sid: SidRef<'_>,
     ) -> Result<(), E> {
         // SAFETY: `self.ptr` points to a valid ACL since it must have been created by
         // `Self::new` which properly initializes the ACL
-        unsafe { add_allowed_ace(self.ptr.as_ptr(), ACL_REVISION.into(), access_mask, sid) }
+        unsafe {
+            add_allowed_ace(
+                self.ptr.as_ptr(),
+                win::ACL_REVISION.into(),
+                access_mask,
+                sid,
+            )
+        }
     }
 
     /// Set this DACL to the object pointed to by `handle` of type `obj_type`.
@@ -385,12 +413,12 @@ impl AclBox {
     /// `handle` must point to a valid object of type `obj_type`.
     pub unsafe fn set_protected<E: SysErr>(
         &self,
-        handle: *mut c_void,
-        obj_type: SeObjectType,
+        handle: win::HANDLE,
+        obj_type: win::SE_OBJECT_TYPE,
     ) -> Result<(), E> {
         // change only DACL, do not inherit ACEs
-        let sec_info: SecurityInformation =
-            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION;
+        let sec_info: win::OBJECT_SECURITY_INFORMATION =
+            win::DACL_SECURITY_INFORMATION | win::PROTECTED_DACL_SECURITY_INFORMATION;
         // SAFETY: the `SidPtr`s and (last) SACL pointer can be null since `sec_info`
         // states that we only modify the DACL
         // SAFETY: `handle` validity is uphold by the caller
@@ -416,7 +444,7 @@ impl AclBox {
 /// never happen as having an ACL of that size is not realistic (and also such
 /// large ACLs cannot be created in Windows).
 #[derive(Clone, Copy, Debug)]
-pub struct AclSize(Dword);
+pub struct AclSize(u32);
 
 impl AclSize {
     /// Returns the size as a `u32`.
@@ -441,7 +469,7 @@ impl AclSize {
     #[must_use]
     pub fn new() -> Self {
         #[allow(clippy::cast_possible_truncation)]
-        let empty_size = core::mem::size_of::<Acl>() as Dword;
+        let empty_size = core::mem::size_of::<win::ACL>() as u32;
         Self(empty_size)
     }
 
@@ -452,9 +480,9 @@ impl AclSize {
     /// Panics when adding the ACE size wraps.
     pub fn add_allowed_ace(&mut self, sid_size: u32) {
         #[allow(clippy::cast_possible_truncation)]
-        let ace_header_size = core::mem::size_of::<AccessAllowedAce>() as u32;
+        let ace_header_size = core::mem::size_of::<win::ACCESS_ALLOWED_ACE>() as u32;
 
-        // add size of ACE minus the sidstart field (Dword -> 4 bytes)
+        // add size of ACE minus the sidstart field (u32 -> 4 bytes)
         self.0 = self.0.checked_add(ace_header_size - 4).unwrap();
         // add size of sid
         self.0 = self.0.checked_add(sid_size).unwrap();
@@ -472,9 +500,10 @@ impl Default for AclSize {
 mod tests {
     use super::*;
     use crate::error::TestSysErr;
-    use winapi::um::accctrl::SE_KERNEL_OBJECT;
-    use winapi::um::winnt::{
-        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE, SYNCHRONIZE, TOKEN_QUERY,
+    use windows::Win32::Security::Authorization::SE_KERNEL_OBJECT;
+    use windows::Win32::Security::TOKEN_QUERY;
+    use windows::Win32::System::Threading::{
+        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
     };
 
     #[test]
@@ -532,7 +561,7 @@ mod tests {
         let mut acl: AclBox = size.allocate::<TestSysErr>().expect("could not create ACL");
         unsafe {
             acl.add_allowed_ace::<TestSysErr>(
-                SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
+                PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE,
                 sid,
             )
         }

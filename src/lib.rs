@@ -60,9 +60,9 @@
 //!
 //! #[cfg(windows)]
 //! fn harden_process() -> Result<(), secmem_proc::error::EmptySystemError> {
-//!     use winapi::um::winnt::{
-//!         PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
-//!         SYNCHRONIZE,
+//!     use windows::Win32::System::Threading::{
+//!         PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+//!         PROCESS_TERMINATE,
 //!     };
 //!
 //!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
@@ -76,7 +76,7 @@
 //!     let acl_spec = EmptyAcl;
 //!     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
 //!         | PROCESS_TERMINATE
-//!         | SYNCHRONIZE
+//!         | PROCESS_SYNCHRONIZE
 //!         | PROCESS_CREATE_THREAD;
 //!     let acl_spec = AddAllowAceAcl::new(acl_spec, access_mask, sid);
 //!

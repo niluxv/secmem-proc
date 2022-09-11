@@ -15,9 +15,9 @@
 //! ```
 //! #[cfg(windows)]
 //! fn harden_process() -> Result<(), secmem_proc::error::EmptySystemError> {
-//!     use winapi::um::winnt::{
-//!         PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
-//!         SYNCHRONIZE,
+//!     use windows::Win32::System::Threading::{
+//!         PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+//!         PROCESS_TERMINATE,
 //!     };
 //!
 //!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
@@ -31,7 +31,7 @@
 //!     let acl_spec = EmptyAcl;
 //!     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
 //!         | PROCESS_TERMINATE
-//!         | SYNCHRONIZE
+//!         | PROCESS_SYNCHRONIZE
 //!         | PROCESS_CREATE_PROCESS;
 //!     let acl_spec = AddAllowAceAcl::new(acl_spec, access_mask, sid);
 //!
@@ -47,9 +47,18 @@
 
 use crate::error::{AllocErr, SysErr};
 use crate::internals::win32 as internals;
-use winapi::shared::minwindef::DWORD as Dword;
+
+mod win {
+    // import structures
+    pub(super) use windows::Win32::Security::Authorization::SE_KERNEL_OBJECT;
+    pub use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
+
+    // import constants
+    pub(super) use windows::Win32::Security::TOKEN_QUERY;
+}
 
 pub use internals::SidRef;
+pub use win::PROCESS_ACCESS_RIGHTS as ProcessAccessRights;
 
 /// Completed (initialized) ACL.
 pub struct Acl(internals::AclBox);
@@ -57,13 +66,11 @@ pub struct Acl(internals::AclBox);
 impl Acl {
     /// Set the ACL `self` as protected DACL for the current process.
     pub fn set_process_dacl_protected<E: SysErr>(&self) -> Result<(), E> {
-        use winapi::um::accctrl::SE_KERNEL_OBJECT;
-
         // SAFETY: `get_process_handle()` gives a valid handle to an `SE_KERNEL_OBJECT`
         // type object
         unsafe {
             self.0
-                .set_protected(internals::get_process_handle(), SE_KERNEL_OBJECT)
+                .set_protected(internals::get_process_handle(), win::SE_KERNEL_OBJECT)
         }
     }
 }
@@ -80,10 +87,12 @@ impl TokenUser {
 
     /// Create [`TokenUser`] for the user of the current process.
     pub fn process_user<E: SysErr + AllocErr>() -> Result<Self, E> {
-        use winapi::um::winnt::TOKEN_QUERY;
         // SAFETY: `get_process_handle()` gives a valid process handle
         let process_tok = unsafe {
-            internals::AccessToken::open_process_token(internals::get_process_handle(), TOKEN_QUERY)
+            internals::AccessToken::open_process_token(
+                internals::get_process_handle(),
+                win::TOKEN_QUERY,
+            )
         }?;
         let user = process_tok.get_token_user()?;
         Ok(Self(user))
@@ -156,12 +165,12 @@ mod acl_construction {
     /// Constructor for an ACL `constructor` with an additional allowed ACE.
     pub struct AddAllowAceAcl<'a, C: AclConstruction> {
         constructor: C,
-        access_mask: Dword,
+        access_mask: ProcessAccessRights,
         sid: SidRef<'a>,
     }
 
     impl<'a, C: AclConstruction> AddAllowAceAcl<'a, C> {
-        pub fn new(constructor: C, access_mask: Dword, sid: SidRef<'a>) -> Self {
+        pub fn new(constructor: C, access_mask: ProcessAccessRights, sid: SidRef<'a>) -> Self {
             AddAllowAceAcl {
                 constructor,
                 access_mask,
@@ -207,7 +216,7 @@ mod tests {
 
     #[test]
     fn create_allow_ace_acl() {
-        use winapi::um::winnt::PROCESS_TERMINATE;
+        use windows::Win32::System::Threading::PROCESS_TERMINATE;
 
         let user =
             TokenUser::process_user::<TestSysErr>().expect("could not get process token user");
