@@ -15,7 +15,8 @@ mod win {
     pub(super) use windows::Win32::Foundation::CloseHandle;
     pub(super) use windows::Win32::Security::Authorization::SetSecurityInfo;
     pub(super) use windows::Win32::Security::{
-        AddAccessAllowedAce, GetLengthSid, GetTokenInformation, InitializeAcl, IsValidSid,
+        AddAccessAllowedAce, AddAccessDeniedAce, GetLengthSid, GetTokenInformation, InitializeAcl,
+        IsValidSid,
     };
     pub(super) use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 
@@ -23,8 +24,8 @@ mod win {
     pub(super) use windows::Win32::Foundation::{HANDLE, PSID, WIN32_ERROR};
     pub(super) use windows::Win32::Security::Authorization::SE_OBJECT_TYPE;
     pub(super) use windows::Win32::Security::{
-        ACCESS_ALLOWED_ACE, ACE_REVISION, ACL, OBJECT_SECURITY_INFORMATION, TOKEN_ACCESS_MASK,
-        TOKEN_USER,
+        ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, ACE_REVISION, ACL, OBJECT_SECURITY_INFORMATION,
+        TOKEN_ACCESS_MASK, TOKEN_USER,
     };
     pub(super) use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
 
@@ -47,7 +48,7 @@ impl From<SidPtr> for win::PSID {
 
 impl From<&SidPtr> for win::PSID {
     fn from(ptr: &SidPtr) -> Self {
-        (*ptr).0
+        ptr.0
     }
 }
 
@@ -270,6 +271,31 @@ unsafe fn add_allowed_ace<E: SysErr>(
     }
 }
 
+/// Add access denied ACE to the ACL pointed to by `acl`.
+///
+/// # Safety
+/// - `acl` has to point to a valid ACL with write access
+///
+/// # Errors
+/// Errors if
+/// - the ACL pointed to by `acl` doesn't have enough space for the Ace
+/// - `revision` is not a valid revision
+/// - `access_mask` is not a valid access_mask
+unsafe fn add_denied_ace<E: SysErr>(
+    acl: *mut win::ACL,
+    revision: win::ACE_REVISION,
+    access_mask: win::PROCESS_ACCESS_RIGHTS,
+    sid: SidRef<'_>,
+) -> Result<(), E> {
+    // SAFETY: uphold by caller
+    let res = unsafe { win::AddAccessDeniedAce(acl, revision.0, access_mask.0, sid.as_ptr()) };
+    if res.as_bool() {
+        Ok(())
+    } else {
+        Err(E::create())
+    }
+}
+
 /// # Safety
 /// - `acl` must be valid for a `acl_len` byte write, 4 byte aligned
 /// - `acl_len` must be a multiple of 4
@@ -382,7 +408,7 @@ impl AclBox {
     fn initialize<E: SysErr>(&mut self) -> Result<(), E> {
         // SAFETY: `self.ptr` is valid for `self.size` byte writes, both are 4 byte
         // aligned by struct safety invariants
-        unsafe { initialize_acl(self.ptr.as_ptr(), self.size, win::ACL_REVISION.into()) }
+        unsafe { initialize_acl(self.ptr.as_ptr(), self.size, win::ACL_REVISION) }
     }
 
     /// Add allowed ACE to the ACL. `access_mask` must be a valid access mask.
@@ -396,14 +422,21 @@ impl AclBox {
     ) -> Result<(), E> {
         // SAFETY: `self.ptr` points to a valid ACL since it must have been created by
         // `Self::new` which properly initializes the ACL
-        unsafe {
-            add_allowed_ace(
-                self.ptr.as_ptr(),
-                win::ACL_REVISION.into(),
-                access_mask,
-                sid,
-            )
-        }
+        unsafe { add_allowed_ace(self.ptr.as_ptr(), win::ACL_REVISION, access_mask, sid) }
+    }
+
+    /// Add denied ACE to the ACL. `access_mask` must be a valid access mask.
+    ///
+    /// # Safety
+    /// - `self` must be large enough to add this ACE.
+    pub unsafe fn add_denied_ace<E: SysErr>(
+        &mut self,
+        access_mask: win::PROCESS_ACCESS_RIGHTS,
+        sid: SidRef<'_>,
+    ) -> Result<(), E> {
+        // SAFETY: `self.ptr` points to a valid ACL since it must have been created by
+        // `Self::new` which properly initializes the ACL
+        unsafe { add_denied_ace(self.ptr.as_ptr(), win::ACL_REVISION, access_mask, sid) }
     }
 
     /// Set this DACL to the object pointed to by `handle` of type `obj_type`.
@@ -481,6 +514,21 @@ impl AclSize {
     pub fn add_allowed_ace(&mut self, sid_size: u32) {
         #[allow(clippy::cast_possible_truncation)]
         let ace_header_size = core::mem::size_of::<win::ACCESS_ALLOWED_ACE>() as u32;
+
+        // add size of ACE minus the sidstart field (u32 -> 4 bytes)
+        self.0 = self.0.checked_add(ace_header_size - 4).unwrap();
+        // add size of sid
+        self.0 = self.0.checked_add(sid_size).unwrap();
+    }
+
+    /// Add access denied ace (size). `sid_size` should be the size of the used
+    /// sid.
+    ///
+    /// # Panics
+    /// Panics when adding the ACE size wraps.
+    pub fn add_denied_ace(&mut self, sid_size: u32) {
+        #[allow(clippy::cast_possible_truncation)]
+        let ace_header_size = core::mem::size_of::<win::ACCESS_DENIED_ACE>() as u32;
 
         // add size of ACE minus the sidstart field (u32 -> 4 bytes)
         self.0 = self.0.checked_add(ace_header_size - 4).unwrap();

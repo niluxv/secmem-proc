@@ -197,9 +197,45 @@ mod acl_construction {
             Ok(acl)
         }
     }
+
+    /// Constructor for an ACL `constructor` with an additional denied ACE.
+    pub struct AddDenyAceAcl<'a, C: AclConstruction> {
+        constructor: C,
+        access_mask: ProcessAccessRights,
+        sid: SidRef<'a>,
+    }
+
+    impl<'a, C: AclConstruction> AddDenyAceAcl<'a, C> {
+        pub fn new(constructor: C, access_mask: ProcessAccessRights, sid: SidRef<'a>) -> Self {
+            AddDenyAceAcl {
+                constructor,
+                access_mask,
+                sid,
+            }
+        }
+
+        pub fn create<E: SysErr + AllocErr>(self) -> Result<Acl, E> {
+            let acl = self.realize_with_size(|_s| {})?;
+            Ok(acl.declare_final())
+        }
+    }
+
+    impl<'a, C: AclConstruction> AclConstruction for AddDenyAceAcl<'a, C> {
+        fn realize_with_size<E: SysErr + AllocErr, F: FnOnce(&mut internals::AclSize)>(
+            self,
+            f: F,
+        ) -> Result<AclPartial, E> {
+            let mut acl = self.constructor.realize_with_size(|size| {
+                size.add_denied_ace(self.sid.len());
+                f(size);
+            })?;
+            unsafe { acl.0.add_denied_ace(self.access_mask, self.sid) }?;
+            Ok(acl)
+        }
+    }
 }
 
-pub use acl_construction::{AddAllowAceAcl, EmptyAcl};
+pub use acl_construction::{AddAllowAceAcl, AddDenyAceAcl, EmptyAcl};
 
 #[cfg(test)]
 mod tests {
@@ -224,6 +260,21 @@ mod tests {
 
         let acl_constructor = EmptyAcl::new();
         let acl_constructor = AddAllowAceAcl::new(acl_constructor, PROCESS_TERMINATE, sid);
+        let acl = acl_constructor
+            .create::<TestSysErr>()
+            .expect("could not create ACL");
+    }
+
+    #[test]
+    fn create_deny_ace_acl() {
+        use windows::Win32::System::Threading::PROCESS_CREATE_PROCESS;
+
+        let user =
+            TokenUser::process_user::<TestSysErr>().expect("could not get process token user");
+        let sid = user.sid();
+
+        let acl_constructor = EmptyAcl::new();
+        let acl_constructor = AddDenyAceAcl::new(acl_constructor, PROCESS_CREATE_PROCESS, sid);
         let acl = acl_constructor
             .create::<TestSysErr>()
             .expect("could not create ACL");
