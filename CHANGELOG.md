@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 - 2022-09-16
+### Added
+- API to create and set custom DACLs on Windows
+
+### Changed
+- Switched from `winapi` to `windows` crate for Windows bindings
+
 ## 0.1.1 - 2022-01-08
 - Added Windows DACL support: `harden_process` now sets a restricted DACL on windows
 
