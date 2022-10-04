@@ -19,13 +19,6 @@ unsafe fn prctl_set_traceable<E: SysErr>(arg: u64) -> Result<(), E> {
     }
 }
 
-#[cfg(target_os = "freebsd")]
-const PROC_TRACE_CTL_ENABLE: i32 = 1;
-#[cfg(target_os = "freebsd")]
-const PROC_TRACE_CTL_DISABLE: i32 = 2;
-#[cfg(target_os = "freebsd")]
-const PROC_TRACE_CTL_DISABLE_EXEC: i32 = 3;
-
 /// Return the process ID of the calling process.
 #[cfg(target_os = "freebsd")]
 fn getpid() -> libc::pid_t {
@@ -35,17 +28,17 @@ fn getpid() -> libc::pid_t {
 
 /// Set traceability/dumpability of the current process to `arg`. `arg` must be
 /// `PROC_TRACE_CTL_ENABLE`, `PROC_TRACE_CTL_DISABLE` or
-/// `PROC_TRACE_CTL_DISABLE`.
+/// `PROC_TRACE_CTL_DISABLE_EXEC`.
 ///
 /// # Safety
 /// `arg` must be `PROC_TRACE_CTL_ENABLE`, `PROC_TRACE_CTL_DISABLE`
-/// or `PROC_TRACE_CTL_DISABLE`.
+/// or `PROC_TRACE_CTL_DISABLE_EXEC`.
 #[cfg(target_os = "freebsd")]
 unsafe fn prctl_set_traceable<E: SysErr>(mut arg: i32) -> Result<(), E> {
     debug_assert!(
-        arg == PROC_TRACE_CTL_ENABLE
-            || arg == PROC_TRACE_CTL_DISABLE
-            || arg == PROC_TRACE_CTL_DISABLE
+        arg == libc::PROC_TRACE_CTL_ENABLE
+            || arg == libc::PROC_TRACE_CTL_DISABLE
+            || arg == libc::PROC_TRACE_CTL_DISABLE_EXEC
     );
     let arg_ptr: *mut libc::c_void = (&mut arg as *mut i32).cast::<libc::c_void>();
     // `pid_t` is i32 but `id_t` is i64
@@ -87,7 +80,7 @@ pub fn set_process_nontraceable<E: SysErr>() -> Result<(), E> {
 #[cfg(target_os = "freebsd")]
 pub fn set_process_nontraceable<E: SysErr>() -> Result<(), E> {
     // SAFETY: argument is `0`, which is a valid argument
-    unsafe { prctl_set_traceable(PROC_TRACE_CTL_DISABLE_EXEC) }
+    unsafe { prctl_set_traceable(libc::PROC_TRACE_CTL_DISABLE_EXEC) }
 }
 
 /// Set process to non-traceable. This disables attaching via `ptrace`.
