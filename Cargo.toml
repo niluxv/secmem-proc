@@ -1,6 +1,6 @@
 [package]
 name = "secmem-proc"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["niluxv <niluxv.opensource.C-h2ty6xl@yandex.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
