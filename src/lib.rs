@@ -114,15 +114,11 @@ extern crate alloc;
 
 mod internals;
 
+pub mod components;
 pub mod error;
-
-pub mod harden;
+//pub mod harden;
 #[cfg(windows)]
 pub mod win_acl;
-
-pub use harden::harden_process;
-#[cfg(feature = "std")]
-pub use harden::harden_process_std_err;
 
 #[cfg(test)]
 mod tests {
