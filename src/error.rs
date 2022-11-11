@@ -1,6 +1,7 @@
 //! Module containing the error structures used in the crate.
 
-/// System error types for unix-like systems.
+/// Legacy error handling for macos, where we cannot (yet) use a `rustix` API.
+#[cfg(target_os = "macos")]
 mod sys_err {
     #[cfg(not(feature = "std"))]
     mod internal {
@@ -53,6 +54,7 @@ mod sys_err {
     pub(crate) use internal::SysErr;
 }
 
+#[cfg(target_os = "macos")]
 pub(crate) use sys_err::SysErr;
 
 /// Private error types.
