@@ -19,8 +19,6 @@ all-features = true
 [features]
 default = ["std"]
 std = ["thiserror"]
-# expose minimal rlimit api on unix-like systems in the `rlimit` module
-rlimit = []
 # required features to run tests; additional features enable more tests
 dev = []
 

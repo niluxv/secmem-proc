@@ -117,8 +117,6 @@ mod internals;
 pub mod error;
 
 pub mod harden;
-#[cfg(all(feature = "rlimit", unix))]
-pub mod rlimit;
 #[cfg(windows)]
 pub mod win_acl;
 

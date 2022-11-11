@@ -40,22 +40,6 @@ impl Rlimit {
     }
 }
 
-#[cfg(all(feature = "rlimit", unix))]
-/// Get resource limit for `resource` to the limit pair pointed to by `rlim`.
-///
-/// # Safety
-/// `resource` must be a valid resource identifier for the platform.
-pub unsafe fn get_rlimit<E: SysErr>(resource: RlimitResource, rlim: &mut Rlimit) -> Result<(), E> {
-    let rlim_ptr = &mut rlim.0 as *mut libc::rlimit;
-    // SAFETY: `rlim_ptr` points to a valid `libc::rlimit` instance
-    let res: i32 = unsafe { libc::setrlimit(resource, rlim_ptr) };
-    if res == 0 {
-        Ok(())
-    } else {
-        Err(E::create())
-    }
-}
-
 #[cfg(unix)]
 /// Set resource limit for `resource` to the limit pair pointed to by `rlim`.
 ///
