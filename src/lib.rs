@@ -115,10 +115,19 @@ extern crate alloc;
 mod internals;
 
 pub mod components;
+pub mod config;
 pub mod error;
-//pub mod harden;
+pub mod harden;
+
 #[cfg(windows)]
 pub mod win_acl;
+/// This module is only available on windows.
+#[cfg(not(windows))]
+pub mod win_acl {}
+
+pub use config::Config;
+pub use error::Result;
+pub use harden::harden_process;
 
 #[cfg(test)]
 mod tests {

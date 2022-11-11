@@ -2,6 +2,10 @@
 //! combined into an appropriate hardening routine.
 //!
 //! The available components in this module are target/arch specific.
+//!
+//! You probably want to use the higher level platform independent configuration
+//! API in [`crate::config`] instead; or the [`crate::harden_process`] function
+//! which uses default configuration.
 
 use crate::error::{Result, ResultExt as _, Traced};
 use crate::internals;
