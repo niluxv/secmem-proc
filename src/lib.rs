@@ -118,6 +118,7 @@ pub mod components;
 pub mod config;
 pub mod error;
 pub mod harden;
+pub mod macros;
 
 #[cfg(windows)]
 pub mod win_acl;
