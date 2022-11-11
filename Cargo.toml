@@ -18,11 +18,12 @@ all-features = true
 
 [features]
 default = ["std"]
-std = ["thiserror"]
+std = ["thiserror", "anyhow/std"]
 # required features to run tests; additional features enable more tests
 dev = []
 
 [dependencies]
+anyhow = { version = "1.0", default-features = false }
 cfg-if = "1.0"
 libc = "0.2.107"
 thiserror = { version = "1.0", optional = true }
