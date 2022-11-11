@@ -1,4 +1,4 @@
-# secmem-proc ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue) [![secmem-proc on crates.io](https://img.shields.io/crates/v/secmem-proc)](https://crates.io/crates/secmem-proc) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/niluxv/secmem-proc)
+# secmem-proc ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue) [![secmem-proc on crates.io](https://img.shields.io/crates/v/secmem-proc)](https://crates.io/crates/secmem-proc) [![secmem-proc on docs.rs](https://docs.rs/secmem-proc/badge.svg)](https://docs.rs/secmem-proc) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/niluxv/secmem-proc) ![Rust Version: none](https://img.shields.io/badge/rustc--orange.svg)
 
 `secmem-proc` is a crate designed to harden a process against *low-privileged* attackers running on the same system trying to obtain secret memory contents of the current process. More specifically, the crate disables core dumps and tries to disable tracing on unix-like OSes.
 
@@ -97,11 +97,10 @@ fn main() {
  - improve tests (how exactly?)
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0AYXSEG1xml6_F1TQjG2vbnLmziiP3GzgVz50YgVu4G490RSdCJM2nYXKEG0INHCJv8-HUG5-lZgNd46XDG3mILvaz9xHMG4oceCSt4aZvYWSBg2tzZWNtZW0tcHJvY2UwLjIuMGtzZWNtZW1fcHJvYw
- [__link0]: https://docs.rs/secmem-proc/0.2.0/secmem_proc/?search=secmem_proc::harden::harden_process
- [__link1]: https://docs.rs/secmem-proc/0.2.0/secmem_proc/?search=secmem_proc::win_acl
- [__link2]: https://docs.rs/secmem-proc/0.2.0/secmem_proc/?search=secmem_proc::harden::harden_process_std_err
- [__link3]: https://docs.rs/secmem-proc/0.2.0/secmem_proc/?search=secmem_proc::harden::harden_process
- [__link4]: https://docs.rs/secmem-proc/0.2.0/secmem_proc/?search=secmem_proc::win_acl
-
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG71F3OPwqbpvG9IQ5w6Zri17Gx1ipmWFPJ-eG-CMco2qCPLiYXKEGx6q-9LIzWTvG5s1rxi9iD7OG8he4WyK0_KJGzzLu73R2wPuYWSBg2tzZWNtZW0tcHJvY2UwLjIuMWtzZWNtZW1fcHJvYw
+ [__link0]: https://docs.rs/secmem-proc/0.2.1/secmem_proc/?search=harden::harden_process
+ [__link1]: https://docs.rs/secmem-proc/0.2.1/secmem_proc/win_acl/index.html
+ [__link2]: https://docs.rs/secmem-proc/0.2.1/secmem_proc/?search=harden::harden_process_std_err
+ [__link3]: https://docs.rs/secmem-proc/0.2.1/secmem_proc/?search=harden::harden_process
+ [__link4]: https://docs.rs/secmem-proc/0.2.1/secmem_proc/win_acl/index.html
 
