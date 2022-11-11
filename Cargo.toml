@@ -19,6 +19,8 @@ all-features = true
 [features]
 default = ["std"]
 std = ["thiserror", "anyhow/std", "rustix/std"]
+# enable anti-tracing techniques using unstable/undocumented APIs/OS implementation details
+unstable = []
 # required features to run tests; additional features enable more tests
 dev = []
 
@@ -32,4 +34,4 @@ thiserror = { version = "1.0", optional = true }
 rustix = { version = "0.36", default-features = false, features = ["process"] }
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.43", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Security_Authorization"] }
+windows = { version = "0.43", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Security_Authorization", "Win32_System_Diagnostics_Debug"] }

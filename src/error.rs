@@ -113,22 +113,65 @@ pub type Result = core::result::Result<(), Error>;
 /// Error that occurred during hardening.
 ///
 /// Either an internal error occurred (`Err` variant), or a debugger was
-/// detected (`BeingTraced` variant).
+/// detected (`BeingTraced` variant). This type implements
+/// [`Display`](core::fmt::Display) in a way that clearly distinguishes these
+/// cases, and prints more information about the detected debugger/tracer if
+/// available.
 #[must_use]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 #[derive(Debug)]
 pub enum Error {
-    /// A debugger was detected.
-    BeingTraced,
+    /// A debugger was detected. The [`Traced`] typed field might contain more
+    /// information about the debugger/tracer.
+    BeingTraced(Traced),
     /// An internal error occurred. Contains an [`anyhow::Error`] with the
     /// internal error.
     Err(anyhow::Error),
 }
 
+/// A structure potentially containing more information about a detected
+/// debugger/tracer.
+#[derive(Debug, Clone)]
+pub struct Traced {
+    #[cfg(unix)]
+    pid: Option<rustix::process::RawNonZeroPid>,
+}
+
+#[cfg(unix)]
+impl Traced {
+    pub(crate) fn from_pid(pid: rustix::process::RawNonZeroPid) -> Self {
+        Self { pid: Some(pid) }
+    }
+}
+
+#[cfg(not(unix))]
+impl Traced {
+    pub(crate) const DEFAULT: Self = Self {};
+}
+
+impl core::fmt::Display for Traced {
+    #[cfg(unix)]
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.pid {
+            Some(pid) => write!(
+                formatter,
+                "program is being traced by the process with pid {}",
+                pid
+            ),
+            None => formatter.write_str("program is being traced"),
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("program is being traced")
+    }
+}
+
 impl core::fmt::Display for Error {
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Self::BeingTraced => formatter.write_str("error: process is being traced"),
+            Self::BeingTraced(tr) => tr.fmt(formatter),
             Self::Err(e) => e.fmt(formatter),
         }
     }
@@ -142,7 +185,7 @@ impl From<anyhow::Error> for Error {
 
 pub(crate) trait ResultExt {
     fn create_ok() -> Self;
-    fn create_being_traced() -> Self;
+    fn create_being_traced(traced: Traced) -> Self;
     fn create_err(e: anyhow::Error) -> Self;
 }
 
@@ -151,8 +194,8 @@ impl ResultExt for Result {
         Ok(())
     }
 
-    fn create_being_traced() -> Self {
-        Err(Error::BeingTraced)
+    fn create_being_traced(traced: Traced) -> Self {
+        Err(Error::BeingTraced(traced))
     }
 
     fn create_err(e: anyhow::Error) -> Self {

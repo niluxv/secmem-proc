@@ -19,12 +19,17 @@ mod win {
         AddAccessAllowedAce, AddAccessDeniedAce, GetLengthSid, GetTokenInformation, InitializeAcl,
         IsValidSid,
     };
+    pub(super) use windows::Win32::System::Diagnostics::Debug::{
+        CheckRemoteDebuggerPresent, IsDebuggerPresent,
+    };
+    #[cfg(feature = "unstable")]
+    pub(super) use windows::Win32::System::Threading::NtSetInformationThread;
     pub(super) use windows::Win32::System::Threading::{
         GetCurrentProcess, GetCurrentThread, OpenProcessToken,
     };
 
     // import structures
-    pub(super) use windows::Win32::Foundation::{HANDLE, PSID};
+    pub(super) use windows::Win32::Foundation::{BOOL, HANDLE, PSID};
     pub(super) use windows::Win32::Security::Authorization::SE_OBJECT_TYPE;
     pub(super) use windows::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, ACE_REVISION, ACL, OBJECT_SECURITY_INFORMATION,
@@ -36,6 +41,17 @@ mod win {
     pub(super) use windows::Win32::Security::{
         TokenUser, ACL_REVISION, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
     };
+
+    // define constants
+    #[cfg(feature = "unstable")]
+    mod unstable {
+        use windows::Win32::System::Threading::THREADINFOCLASS;
+        // SOURCE:
+        // <https://anti-debug.checkpoint.com/techniques/interactive.html#ntsetinformationthread>
+        pub(crate) const ThreadHideFromDebugger: THREADINFOCLASS = THREADINFOCLASS(0x11);
+    }
+    #[cfg(feature = "unstable")]
+    pub(super) use unstable::*;
 }
 
 /// Process handle.
@@ -66,6 +82,60 @@ pub fn get_process_handle() -> ProcessHandle {
 pub fn get_thread_handle() -> ThreadHandle {
     // calling `GetCurrentProcess` just returns a constant, is safe and cannot fail
     ThreadHandle(unsafe { win::GetCurrentThread() })
+}
+
+/// Checks whether the current process is being traced by a debugger.
+#[must_use]
+pub fn is_debugger_present() -> bool {
+    // always safe to call
+    unsafe { win::IsDebuggerPresent() }.as_bool()
+}
+
+/// Checks whether process `process_handle` is being traced by a debugger.
+///
+/// This can be used with a handle to the current process, in addition to
+/// checking via [`is_debugger_present`] since they work via very different
+/// mechanisms. Therefore it requires more effort for a debugger to work around
+/// both techniques.
+///
+/// # Safety
+/// `process_handle` must be a valid process handle
+pub unsafe fn is_remote_debugger_present(process_handle: ProcessHandle) -> anyhow::Result<bool> {
+    let mut debugger = win::BOOL(0);
+    unsafe { win::CheckRemoteDebuggerPresent(process_handle, &mut debugger as *mut _) }
+        .ok()
+        .map_anyhow()?;
+    Ok(debugger.as_bool())
+}
+
+/// Hides the thread `thread_handle` from an attached debugger.
+///
+/// # Safety
+/// `thread_handle` must be a valid thread handle.
+#[cfg(feature = "unstable")]
+pub unsafe fn hide_thread_from_debugger(thread_handle: ThreadHandle) -> anyhow::Result<()> {
+    unsafe {
+        win::NtSetInformationThread(
+            thread_handle,
+            win::ThreadHideFromDebugger,
+            core::ptr::null(),
+            0,
+        )
+    }?;
+    Ok(())
+}
+
+/// Checks whether a debugger is present by reading the `KdDebuggerEnabled`
+/// field in the `KUSER_SHARED_DATA` shared kernel table.
+///
+/// # Compatibility
+/// Requires Windows 2000 or later.
+#[cfg(feature = "unstable")]
+pub unsafe fn is_kernelflag_debugger_present() -> bool {
+    let ptr: *mut u8 = 0x7ffe02d4 as *mut u8;
+    // SAFETY: this address points into a shared kernel part of the address space,
+    // so this pointer can't alias any Rust known/managed memory
+    (unsafe { ptr.read_volatile() }) != 0
 }
 
 /// Pointer to a SID.

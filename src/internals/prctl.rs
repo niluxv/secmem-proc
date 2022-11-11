@@ -54,6 +54,18 @@ pub fn set_process_nontraceable() -> anyhow::Result<()> {
     }
 }
 
+/// Check whether the current process is being traced.
+///
+/// # Errors
+/// Returns an error when the underlying syscall returns an error.
+#[cfg(target_os = "freebsd")]
+pub fn is_tracer_present() -> anyhow::Result<Option<rustix::process::RawNonZeroPid>> {
+    match rustix::process::trace_status(None).map_anyhow()? {
+        rustix::process::TracingStatus::BeingTraced(pid) => Ok(Some(pid.as_raw_nonzero())),
+        _ => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
