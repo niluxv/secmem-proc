@@ -1,86 +1,204 @@
 //! Module containing the error structures used in the crate.
 
-use core::fmt;
-#[cfg(feature = "std")]
-use thiserror::Error;
+/// Legacy error handling for macos, where we cannot (yet) use a `rustix` API.
+#[cfg(target_os = "macos")]
+mod sys_err {
+    #[cfg(not(feature = "std"))]
+    mod internal {
+        use core::fmt;
 
-/// Trait describing systems errors.
-///
-/// Most code in this crate is generic over the error type as long as it
-/// implements this trait. The `create` method is used to create a new error
-/// for the last OS error that occurred (on systems which work with an `errno`/
-/// `GetLastError` etc. system).
-pub trait SysErr: fmt::Debug + fmt::Display {
-    /// Create error for the last OS error.
-    fn create() -> Self;
+        #[derive(Debug)]
+        pub(crate) struct SysErr;
 
-    /// Create error from raw OS error code.
-    fn from_code(code: i32) -> Self;
+        impl fmt::Display for SysErr {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("system error")
+            }
+        }
+
+        impl SysErr {
+            pub fn create() -> Self {
+                Self
+            }
+
+            pub fn create_anyhow() -> anyhow::Error {
+                anyhow::anyhow!(Self::create())
+            }
+        }
+    }
+
+    #[cfg(feature = "std")]
+    mod internal {
+        use core::fmt;
+
+        #[derive(Debug, thiserror::Error)]
+        pub(crate) struct SysErr(std::io::Error);
+
+        impl fmt::Display for SysErr {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "system error: {}", self.0)
+            }
+        }
+
+        impl SysErr {
+            pub fn create() -> Self {
+                Self(std::io::Error::last_os_error())
+            }
+
+            pub fn create_anyhow() -> anyhow::Error {
+                anyhow::anyhow!(Self::create())
+            }
+        }
+    }
+
+    pub(crate) use internal::SysErr;
 }
 
-/// Trait describing (system) allocation errors.
-///
-/// Mostly meant as an extension trait to [`SysErr`] to allow for allocation
-/// errors.
-pub trait AllocErr: fmt::Debug + fmt::Display {
-    fn alloc_err() -> Self;
+#[cfg(target_os = "macos")]
+pub(crate) use sys_err::SysErr;
+
+/// Private error types.
+pub(crate) mod private {
+    use core::fmt;
+
+    /// Error indicating that the global allocator returned a zero pointer,
+    /// possibly due to OOM.
+    #[derive(Debug, Clone)]
+    #[cfg_attr(feature = "std", derive(thiserror::Error))]
+    pub(crate) struct AllocError(core::alloc::Layout);
+
+    impl fmt::Display for AllocError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("allocation error, possibly OOM")
+        }
+    }
+
+    impl AllocError {
+        /// Create a new alloc error from a layout.
+        #[must_use]
+        pub(crate) fn new(layout: core::alloc::Layout) -> Self {
+            Self(layout)
+        }
+    }
+
+    pub(crate) fn alloc_err_from_size_align(size: usize, align: usize) -> anyhow::Error {
+        let layout = core::alloc::Layout::from_size_align(size, align);
+        match layout {
+            Ok(layout) => anyhow::anyhow!(AllocError::new(layout)),
+            Err(layout_err) => anyhow::anyhow!(layout_err),
+        }
+    }
+
+    pub(crate) trait ResultExt {
+        type T;
+        fn map_anyhow(self) -> anyhow::Result<Self::T>;
+    }
+
+    impl<T, E: Send + Sync + fmt::Debug + fmt::Display + 'static> ResultExt
+        for core::result::Result<T, E>
+    {
+        type T = T;
+
+        fn map_anyhow(self) -> anyhow::Result<Self::T> {
+            self.map_err(|e| anyhow::anyhow!(e))
+        }
+    }
 }
 
-/// System error containing no information.
+// Public error types
+
+/// The result type used throughout the public API of this crate.
+pub type Result = core::result::Result<(), Error>;
+
+/// Error that occurred during hardening.
+///
+/// Either an internal error occurred (`Err` variant), or a debugger was
+/// detected (`BeingTraced` variant). This type implements
+/// [`Display`](core::fmt::Display) in a way that clearly distinguishes these
+/// cases, and prints more information about the detected debugger/tracer if
+/// available.
+#[must_use]
+#[cfg_attr(feature = "std", derive(thiserror::Error))]
+#[derive(Debug)]
+pub enum Error {
+    /// A debugger was detected. The [`Traced`] typed field might contain more
+    /// information about the debugger/tracer.
+    BeingTraced(Traced),
+    /// An internal error occurred. Contains an [`anyhow::Error`] with the
+    /// internal error.
+    Err(anyhow::Error),
+}
+
+/// A structure potentially containing more information about a detected
+/// debugger/tracer.
 #[derive(Debug, Clone)]
-#[cfg_attr(feature = "std", derive(Error))]
-pub struct EmptySystemError;
+pub struct Traced {
+    #[cfg(unix)]
+    pid: Option<rustix::process::RawNonZeroPid>,
+}
 
-impl fmt::Display for EmptySystemError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("system error")
+#[cfg(unix)]
+impl Traced {
+    pub(crate) fn from_pid(pid: rustix::process::RawNonZeroPid) -> Self {
+        Self { pid: Some(pid) }
     }
 }
 
-impl SysErr for EmptySystemError {
-    fn create() -> Self {
-        Self
+#[cfg(not(unix))]
+impl Traced {
+    pub(crate) const DEFAULT: Self = Self {};
+}
+
+impl core::fmt::Display for Traced {
+    #[cfg(unix)]
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self.pid {
+            Some(pid) => write!(
+                formatter,
+                "program is being traced by the process with pid {}",
+                pid
+            ),
+            None => formatter.write_str("program is being traced"),
+        }
     }
 
-    fn from_code(_code: i32) -> Self {
-        Self
+    #[cfg(not(unix))]
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("program is being traced")
     }
 }
 
-impl AllocErr for EmptySystemError {
-    fn alloc_err() -> Self {
-        Self
+impl core::fmt::Display for Error {
+    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::BeingTraced(tr) => tr.fmt(formatter),
+            Self::Err(e) => e.fmt(formatter),
+        }
     }
 }
 
-/// System error containing the error code, as a [`std::io::Error`].
-#[cfg(feature = "std")]
-pub type StdSystemError = std::io::Error;
-
-#[cfg(feature = "std")]
-impl SysErr for StdSystemError {
-    fn create() -> Self {
-        Self::last_os_error()
-    }
-
-    fn from_code(code: i32) -> Self {
-        Self::from_raw_os_error(code)
+impl From<anyhow::Error> for Error {
+    fn from(err: anyhow::Error) -> Self {
+        Error::Err(err)
     }
 }
 
-#[cfg(feature = "std")]
-impl AllocErr for StdSystemError {
-    fn alloc_err() -> Self {
-        std::io::ErrorKind::OutOfMemory.into()
-    }
+pub(crate) trait ResultExt {
+    fn create_ok() -> Self;
+    fn create_being_traced(traced: Traced) -> Self;
+    fn create_err(e: anyhow::Error) -> Self;
 }
 
-// Prefered error type in (internals) tests.
-#[cfg(test)]
-cfg_if::cfg_if!(
-    if #[cfg(feature = "std")] {
-        pub(crate) use StdSystemError as TestSysErr;
-    } else {
-        pub(crate) use EmptySystemError as TestSysErr;
+impl ResultExt for Result {
+    fn create_ok() -> Self {
+        Ok(())
     }
-);
+
+    fn create_being_traced(traced: Traced) -> Self {
+        Err(Error::BeingTraced(traced))
+    }
+
+    fn create_err(e: anyhow::Error) -> Self {
+        Err(Error::Err(e))
+    }
+}

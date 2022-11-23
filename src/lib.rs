@@ -27,39 +27,59 @@
 //! permissions are required, the safe API in the [`win_acl`] module can be used
 //! to create and set a custom DACL instead.
 //!
+//! On windows, this crate depends on `std` via a dependency on the [`windows`
+//! crate].
+//!
 //! # Examples
 //! In the below example the main function of some application calls the main
 //! hardening function provided by this crate: `harden_process`. This will
-//! perform all available hardening steps on the target platform. If an error
-//! is returned then one of the hardening steps failed and the process is quits
-//! at the `return` after printing an error to stdout.
+//! perform all available hardening steps (except unstable ones) on the target
+//! platform. When one of the hardening steps fails or a debugger is detected,
+//! the function returns an error. It is advised to terminate the application on
+//! any error.
 //!
 //! ```
 //! fn main() {
 //!     // call `secmem_proc::harden_process` before doing anything else, to harden the process
 //!     // against low-privileged attackers trying to obtain secret parts of memory which will
 //!     // be handled by the process
-//!     if secmem_proc::harden_process().is_err() {
+//!     if let Err(e) = secmem_proc::harden_process() {
 //!         println!("ERROR: could not harden process, exiting");
+//!         println!("ERROR: {}", e);
 //!         return;
 //!     }
 //!     // rest of your program
 //! }
 //! ```
 //!
-//! If you have the `std` feature enabled you can get more informative errors
-//! using [`harden_process_std_err`] instead of [`harden_process`].
-//!
-//! In the next example we use the API in [`win_acl`] to set a custom DACL on
-//! Windows. In the example we grant the `PROCESS_CREATE_THREAD` permissions in
-//! addition to the default ones.
+//! It is also possible to configure what kind of hardening steps are performed.
+//! For this, the API in [`config`] can be used. An example is shown below:
 //!
 //! ```
-//! #[cfg(not(windows))]
-//! use secmem_proc::harden_process;
+//! fn main() {
+//!     // harden before doing anything else
+//!     let mut config = secmem_proc::Config::DEFAULT;
+//!     config.set_anti_tracing(false);
+//!     config.set_fs(false);
+//!     if let Err(e) = config.harden_process() {
+//!         println!("ERROR: could not harden process, exiting");
+//!         println!("ERROR: {}", e);
+//!         return;
+//!     }
+//!     // rest of your program
+//! }
+//! ```
 //!
+//! In the last example we use the API in [`win_acl`] to set a custom DACL on
+//! Windows. In the example we grant the `PROCESS_CREATE_THREAD` permissions in
+//! addition to the default ones. Note that in this particular use case the same
+//! could have been achieved using [`Config::set_win_dacl_custom_user_perm`],
+//! which is clearly a lot easier. The below approach is, however, a lot more
+//! flexible.
+//!
+//! ```
 //! #[cfg(windows)]
-//! fn harden_process() -> Result<(), secmem_proc::error::EmptySystemError> {
+//! fn set_windows_dacl() -> secmem_proc::Result {
 //!     use windows::Win32::System::Threading::{
 //!         PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
 //!         PROCESS_TERMINATE,
@@ -82,12 +102,19 @@
 //!
 //!     // Create ACL and set as process DACL
 //!     let acl = acl_spec.create()?;
-//!     acl.set_process_dacl_protected()
+//!     acl.set_process_dacl_protected()?;
+//!     Ok(())
 //! }
 //!
 //! fn main() {
-//!     if harden_process().is_err() {
+//!     // harden before doing anything else
+//!     let mut config = secmem_proc::Config::DEFAULT;
+//!     #[cfg(windows)]
+//!     config.set_win_dacl_custom_fn(set_windows_dacl);
+//!     config.set_fs(false);
+//!     if let Err(e) = config.harden_process() {
 //!         println!("ERROR: could not harden process, exiting");
+//!         println!("ERROR: {}", e);
 //!         return;
 //!     }
 //!     // rest of your program
@@ -95,10 +122,13 @@
 //! ```
 //!
 //! # Cargo features
-//! - `std` (default): Enable functionality that requires `std`. Currently only
-//!   required for `Error` implements and required for tests. This feature is
-//!   enabled by default.
-//! - `rlimit`: Expose a minimal resource limit API in the `rlimit` module.
+//! - `std` (default): Enable functionality that requires `std`. Currently
+//!   required for `Error` implements, anti-tracing on Linux via
+//!   `/proc/self/status` and tests. This feature is enabled by default.
+//! - `unstable`: Enable functionality that depends on undocumented or unstable
+//!   OS/platform details. This feature only enables support for these; to
+//!   actually enable these anti-debugging methods, they have to be specifically
+//!   enabled in the [configuration].
 //! - `dev`: This feature enables all features required to run the test-suite,
 //!   and should only be enabled for that purpose.
 //!
@@ -108,23 +138,56 @@
 //! - Disable ptrace on macos using ptrace
 //! - Disable core dumps for the process on posix systems using rlimit
 //! - Set restricted DACL for the process on windows
+//! - When the `std` feature is enabled, detect debuggers on linux by reading
+//!   `/proc/self/status` (std, anti-tracing)
+//! - Detect debuggers using `IsDebuggerPresent` and
+//!   `CheckRemoteDebuggerPresent` on windows (anti-tracing)
+//! - With unstable enabled, hide the thread from a debugger on windows
+//!   (unstable, anti-tracing)
+//! - With unstable enabled, detect debuggers by reading from the kernel
+//!   structure `KUSER_SHARED_DATA` on windows (unstable, anti-tracing)
+//!
+//! # Anti-tracing
+//! The hardening methods employed by this crate can be devided into two groups:
+//! * security related process hardening, and
+//! * anti-tracing.
+//!
+//! The difference between the two lies in the thread model. Process hardening
+//! mostly assumes the process is not yet under attack, e.g. it is not yet being
+//! traced. Hardening methods then make changed to the configuration of the
+//! process to limit access other processes have to it, e.g. disable tracing of
+//! the process or disable core dumps. Anti-tracing assumes the process is
+//! already traced/debugged by a malicious process (malware). The goal is then
+//! to detect the tracer/debugger. Anti-tracing methods can always be subverted
+//! by a tracer/debugger, though some are harder to work around than others.
+//! (The `KUSER_SHARED_DATA` unstable anti-tracing method on windows is a
+//! difficult one to work around.) Anti-tracing can be disabled using
+//! [`Config::set_anti_tracing(false)`].
+//!
+//! [`windows` crate]: https://crates.io/crates/windows
+//! [configuration]: config::Config
+//! [`Config::set_anti_tracing(false)`]: Config::set_anti_tracing
 
 #[cfg(windows)]
 extern crate alloc;
 
 mod internals;
 
+pub mod components;
+pub mod config;
 pub mod error;
-
 pub mod harden;
-#[cfg(all(feature = "rlimit", unix))]
-pub mod rlimit;
+pub mod macros;
+
 #[cfg(windows)]
 pub mod win_acl;
+/// This module is only available on windows.
+#[cfg(not(windows))]
+pub mod win_acl {}
 
+pub use config::Config;
+pub use error::Result;
 pub use harden::harden_process;
-#[cfg(feature = "std")]
-pub use harden::harden_process_std_err;
 
 #[cfg(test)]
 mod tests {

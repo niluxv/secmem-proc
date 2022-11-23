@@ -14,7 +14,7 @@
 //!
 //! ```
 //! #[cfg(windows)]
-//! fn harden_process() -> Result<(), secmem_proc::error::EmptySystemError> {
+//! fn harden_process() -> secmem_proc::Result {
 //!     use windows::Win32::System::Threading::{
 //!         PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
 //!         PROCESS_TERMINATE,
@@ -37,7 +37,8 @@
 //!
 //!     // Create ACL and set as process DACL
 //!     let acl = acl_spec.create()?;
-//!     acl.set_process_dacl_protected()
+//!     acl.set_process_dacl_protected()?;
+//!     Ok(())
 //! }
 //!
 //! // call `harden_process` as defined above in `main`
@@ -45,7 +46,6 @@
 //! # harden_process();
 //! ```
 
-use crate::error::{AllocErr, SysErr};
 use crate::internals::win32 as internals;
 
 mod win {
@@ -65,7 +65,7 @@ pub struct Acl(internals::AclBox);
 
 impl Acl {
     /// Set the ACL `self` as protected DACL for the current process.
-    pub fn set_process_dacl_protected<E: SysErr>(&self) -> Result<(), E> {
+    pub fn set_process_dacl_protected(&self) -> anyhow::Result<()> {
         // SAFETY: `get_process_handle()` gives a valid handle to an `SE_KERNEL_OBJECT`
         // type object
         unsafe {
@@ -86,7 +86,7 @@ impl TokenUser {
     }
 
     /// Create [`TokenUser`] for the user of the current process.
-    pub fn process_user<E: SysErr + AllocErr>() -> Result<Self, E> {
+    pub fn process_user() -> anyhow::Result<Self> {
         // SAFETY: `get_process_handle()` gives a valid process handle
         let process_tok = unsafe {
             internals::AccessToken::open_process_token(
@@ -128,10 +128,10 @@ mod acl_construction {
         /// Construct an ACL according to the specification `self`, giving the
         /// caller the ability to modify the allocation size through the
         /// callback `f`.
-        fn realize_with_size<E: SysErr + AllocErr, F: FnOnce(&mut internals::AclSize)>(
+        fn realize_with_size<F: FnOnce(&mut internals::AclSize)>(
             self,
             f: F,
-        ) -> Result<AclPartial, E>;
+        ) -> anyhow::Result<AclPartial>;
     }
 
     /// Constructor for an empty ACL.
@@ -144,17 +144,17 @@ mod acl_construction {
             EmptyAcl
         }
 
-        pub fn create<E: SysErr + AllocErr>(self) -> Result<Acl, E> {
+        pub fn create(self) -> anyhow::Result<Acl> {
             let acl = self.realize_with_size(|_s| {})?;
             Ok(acl.declare_final())
         }
     }
 
     impl AclConstruction for EmptyAcl {
-        fn realize_with_size<E: SysErr + AllocErr, F: FnOnce(&mut internals::AclSize)>(
+        fn realize_with_size<F: FnOnce(&mut internals::AclSize)>(
             self,
             f: F,
-        ) -> Result<AclPartial, E> {
+        ) -> anyhow::Result<AclPartial> {
             let mut size = internals::AclSize::new();
             f(&mut size);
             let acl = size.allocate()?;
@@ -178,17 +178,17 @@ mod acl_construction {
             }
         }
 
-        pub fn create<E: SysErr + AllocErr>(self) -> Result<Acl, E> {
+        pub fn create(self) -> anyhow::Result<Acl> {
             let acl = self.realize_with_size(|_s| {})?;
             Ok(acl.declare_final())
         }
     }
 
     impl<'a, C: AclConstruction> AclConstruction for AddAllowAceAcl<'a, C> {
-        fn realize_with_size<E: SysErr + AllocErr, F: FnOnce(&mut internals::AclSize)>(
+        fn realize_with_size<F: FnOnce(&mut internals::AclSize)>(
             self,
             f: F,
-        ) -> Result<AclPartial, E> {
+        ) -> anyhow::Result<AclPartial> {
             let mut acl = self.constructor.realize_with_size(|size| {
                 size.add_allowed_ace(self.sid.len());
                 f(size);
@@ -214,17 +214,17 @@ mod acl_construction {
             }
         }
 
-        pub fn create<E: SysErr + AllocErr>(self) -> Result<Acl, E> {
+        pub fn create(self) -> anyhow::Result<Acl> {
             let acl = self.realize_with_size(|_s| {})?;
             Ok(acl.declare_final())
         }
     }
 
     impl<'a, C: AclConstruction> AclConstruction for AddDenyAceAcl<'a, C> {
-        fn realize_with_size<E: SysErr + AllocErr, F: FnOnce(&mut internals::AclSize)>(
+        fn realize_with_size<F: FnOnce(&mut internals::AclSize)>(
             self,
             f: F,
-        ) -> Result<AclPartial, E> {
+        ) -> anyhow::Result<AclPartial> {
             let mut acl = self.constructor.realize_with_size(|size| {
                 size.add_denied_ace(self.sid.len());
                 f(size);
@@ -240,43 +240,34 @@ pub use acl_construction::{AddAllowAceAcl, AddDenyAceAcl, EmptyAcl};
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::error::TestSysErr;
 
     #[test]
     fn create_empty_acl() {
         let acl_constructor = EmptyAcl::new();
-        let acl = acl_constructor
-            .create::<TestSysErr>()
-            .expect("could not create ACL");
+        let acl = acl_constructor.create().expect("could not create ACL");
     }
 
     #[test]
     fn create_allow_ace_acl() {
         use windows::Win32::System::Threading::PROCESS_TERMINATE;
 
-        let user =
-            TokenUser::process_user::<TestSysErr>().expect("could not get process token user");
+        let user = TokenUser::process_user().expect("could not get process token user");
         let sid = user.sid();
 
         let acl_constructor = EmptyAcl::new();
         let acl_constructor = AddAllowAceAcl::new(acl_constructor, PROCESS_TERMINATE, sid);
-        let acl = acl_constructor
-            .create::<TestSysErr>()
-            .expect("could not create ACL");
+        let acl = acl_constructor.create().expect("could not create ACL");
     }
 
     #[test]
     fn create_deny_ace_acl() {
         use windows::Win32::System::Threading::PROCESS_CREATE_PROCESS;
 
-        let user =
-            TokenUser::process_user::<TestSysErr>().expect("could not get process token user");
+        let user = TokenUser::process_user().expect("could not get process token user");
         let sid = user.sid();
 
         let acl_constructor = EmptyAcl::new();
         let acl_constructor = AddDenyAceAcl::new(acl_constructor, PROCESS_CREATE_PROCESS, sid);
-        let acl = acl_constructor
-            .create::<TestSysErr>()
-            .expect("could not create ACL");
+        let acl = acl_constructor.create().expect("could not create ACL");
     }
 }

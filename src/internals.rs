@@ -2,7 +2,7 @@
 
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 pub mod prctl;
-#[cfg(unix)]
-pub mod rlimit;
+#[cfg(feature = "std")]
+pub mod std;
 #[cfg(windows)]
 pub mod win32;
