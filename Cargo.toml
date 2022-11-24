@@ -1,6 +1,6 @@
 [package]
 name = "secmem-proc"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["niluxv <niluxv.opensource.C-h2ty6xl@yandex.com>"]
 edition = "2021"
 license = "MIT OR Apache-2.0"
@@ -10,6 +10,7 @@ categories = ["no-std", "cryptography", "os"]
 keywords = ["secure", "memory", "process", "hardening"]
 repository = "https://github.com/niluxv/secmem-proc"
 include = ["src/**/*", "COPYING", "LICENSE.*", "README.md"]
+rust-version = "1.65"
 
 [package.metadata.docs.rs]
 all-features = true
@@ -18,6 +19,7 @@ all-features = true
 
 [features]
 default = ["std"]
+# enable functionality requiring std; note that on Windows we always depend on std transitively via the windows crate
 std = ["thiserror", "anyhow/std", "rustix/std", "rustix/procfs"]
 # enable anti-tracing techniques using unstable/undocumented APIs/OS implementation details
 unstable = []

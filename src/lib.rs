@@ -7,7 +7,8 @@
 //! `secmem-proc` is a crate designed to harden a process against
 //! *low-privileged* attackers running on the same system trying to obtain
 //! secret memory contents of the current process. More specifically, the crate
-//! disables core dumps and tries to disable tracing on unix-like OSes.
+//! disables core dumps, makes a best effort to disable the ability to trace it,
+//! and makes a minimal effort to detect already attached tracers.
 //!
 //! __Note__: all the crate does is *hardening*, i.e. it tries to make attacks
 //! *harder*. It can by no means promise any security! In particular, when an
@@ -133,19 +134,19 @@
 //!   and should only be enabled for that purpose.
 //!
 //! # Implementation
-//! - Disable ptrace and core dumps on the process on linux using prctl
-//! - Disable ptrace and core dumps on the process on freebsd using procctl
+//! - Disable ptrace and core dumps for the process on linux using prctl
+//! - Disable ptrace and core dumps for the process on freebsd using procctl
 //! - Disable ptrace on macos using ptrace
 //! - Disable core dumps for the process on posix systems using rlimit
 //! - Set restricted DACL for the process on windows
 //! - When the `std` feature is enabled, detect debuggers on linux by reading
 //!   `/proc/self/status` (std, anti-tracing)
-//! - Detect debuggers using `IsDebuggerPresent` and
-//!   `CheckRemoteDebuggerPresent` on windows (anti-tracing)
+//! - Detect debuggers on windows using `IsDebuggerPresent` and
+//!   `CheckRemoteDebuggerPresent` (anti-tracing)
 //! - With unstable enabled, hide the thread from a debugger on windows
 //!   (unstable, anti-tracing)
-//! - With unstable enabled, detect debuggers by reading from the kernel
-//!   structure `KUSER_SHARED_DATA` on windows (unstable, anti-tracing)
+//! - With unstable enabled, detect debuggers on windows by reading from the
+//!   kernel structure `KUSER_SHARED_DATA` (unstable, anti-tracing)
 //!
 //! # Anti-tracing
 //! The hardening methods employed by this crate can be devided into two groups:
