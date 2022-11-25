@@ -9,6 +9,7 @@
 
 use crate::error::{Result, ResultExt as _, Traced};
 use crate::internals;
+use anyhow::Context;
 
 /// Check whether a tracer is attached via the appropriate WinAPI calls.
 ///
@@ -36,7 +37,9 @@ pub fn check_tracer_winapi() -> Result {
         },
         Ok(false) => {},
         Err(e) => {
-            return Result::create_err(e);
+            return Result::create_err(
+                e.context("Failed to check whether a tracer is present via WinAPI"),
+            );
         },
     }
 
@@ -74,7 +77,9 @@ pub fn check_tracer_unstable() -> Result {
 /// Returns an error when the system interface returns an error.
 #[cfg(all(windows, feature = "unstable"))]
 pub fn hide_thread_from_debugger_ntapi() -> Result {
-    unsafe { internals::win32::hide_thread_from_debugger(internals::win32::get_thread_handle()) }?;
+    // SAFETY: `internals::win32::get_thread_handle()` gives a valid thread handle
+    unsafe { internals::win32::hide_thread_from_debugger(internals::win32::get_thread_handle()) }
+        .context("Failed hide the thread from potential tracers")?;
     Result::create_ok()
 }
 
@@ -91,12 +96,14 @@ pub fn hide_thread_from_debugger_ntapi() -> Result {
 /// Returns an error when the system interface returns an error.
 #[cfg(windows)]
 pub fn set_empty_dacl_winapi() -> Result {
+    const CTX: &str = "Failed to set a process DACL";
+
     // Specify the ACL we want to create
     let acl_spec = crate::win_acl::EmptyAcl;
 
     // Create ACL and set as process DACL
-    let acl = acl_spec.create()?;
-    acl.set_process_dacl_protected()?;
+    let acl = acl_spec.create().context(CTX)?;
+    acl.set_process_dacl_protected().context(CTX)?;
     Result::create_ok()
 }
 
@@ -117,9 +124,10 @@ pub fn set_custom_dacl_winapi(
     access_mask: windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS,
 ) -> Result {
     use crate::win_acl::TokenUser;
+    const CTX: &str = "Failed to set a process DACL";
 
     // First obtain the SID of the current user
-    let user = TokenUser::process_user()?;
+    let user = TokenUser::process_user().context(CTX)?;
     let sid = user.sid();
 
     // Now specify the ACL we want to create
@@ -127,8 +135,8 @@ pub fn set_custom_dacl_winapi(
     let acl_spec = crate::win_acl::AddAllowAceAcl::new(acl_spec, access_mask, sid);
 
     // Create ACL and set as process DACL
-    let acl = acl_spec.create()?;
-    acl.set_process_dacl_protected()?;
+    let acl = acl_spec.create().context(CTX)?;
+    acl.set_process_dacl_protected().context(CTX)?;
     Result::create_ok()
 }
 
@@ -169,7 +177,9 @@ pub fn disable_core_dumps_rlimit() -> Result {
         current: Some(0),
         maximum: Some(0),
     };
-    rustix::process::setrlimit(RESOURCE, rlim).map_anyhow()?;
+    rustix::process::setrlimit(RESOURCE, rlim)
+        .map_anyhow()
+        .context("Failed to disable core-dumps via rlimit")?;
     Result::create_ok()
 }
 
@@ -183,7 +193,8 @@ pub fn disable_core_dumps_rlimit() -> Result {
 /// Returns an error when the system or libc interface returns an error.
 #[cfg(any(target_os = "linux", target_os = "freebsd", target_os = "macos"))]
 pub fn disable_tracing_prctl() -> Result {
-    internals::prctl::set_process_nontraceable()?;
+    internals::prctl::set_process_nontraceable()
+        .context("Failed to disable ptrace-ability of the process")?;
     Result::create_ok()
 }
 
@@ -199,7 +210,9 @@ pub fn disable_tracing_prctl() -> Result {
 /// `BeingTraced` when the process is being traced.
 #[cfg(all(target_os = "linux", feature = "std"))]
 pub fn check_tracer_procfs() -> Result {
-    if let Some(pid) = internals::std::is_tracer_present()? {
+    if let Some(pid) = internals::std::is_tracer_present()
+        .context("Failed to check tracer presence via /proc/self/status")?
+    {
         return Result::create_being_traced(Traced::from_pid(pid));
     };
     Result::create_ok()
@@ -216,7 +229,9 @@ pub fn check_tracer_procfs() -> Result {
 /// Returns `BeingTraced` when the process is being traced.
 #[cfg(target_os = "freebsd")]
 pub fn check_tracer_prctl() -> Result {
-    if let Some(pid) = internals::prctl::is_tracer_present()? {
+    if let Some(pid) = internals::prctl::is_tracer_present()
+        .context("Failed to check tracer presence via procctl")?
+    {
         return Result::create_being_traced(Traced::from_pid(pid));
     };
     Result::create_ok()

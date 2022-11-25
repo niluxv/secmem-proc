@@ -80,7 +80,7 @@ pub fn get_process_handle() -> ProcessHandle {
 /// Creates pseudo-handle to the current thread. Needs not be closed.
 #[must_use]
 pub fn get_thread_handle() -> ThreadHandle {
-    // calling `GetCurrentProcess` just returns a constant, is safe and cannot fail
+    // calling `GetCurrentThread` just returns a constant, is safe and cannot fail
     ThreadHandle(unsafe { win::GetCurrentThread() })
 }
 
@@ -121,7 +121,8 @@ pub unsafe fn hide_thread_from_debugger(thread_handle: ThreadHandle) -> anyhow::
             core::ptr::null(),
             0,
         )
-    }?;
+    }
+    .map_anyhow()?;
     Ok(())
 }
 
