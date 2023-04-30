@@ -9,6 +9,7 @@ use alloc::alloc;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::ptr::NonNull;
+use windows::core::IntoParam;
 
 #[allow(non_upper_case_globals)]
 mod win {
@@ -67,6 +68,16 @@ impl From<ProcessHandle> for win::HANDLE {
 impl From<ThreadHandle> for win::HANDLE {
     fn from(handle: ThreadHandle) -> Self {
         handle.0
+    }
+}
+impl IntoParam<win::HANDLE> for ProcessHandle {
+    fn into_param(self) -> windows::core::Param<win::HANDLE> {
+        windows::core::Param::Owned(self.0)
+    }
+}
+impl IntoParam<win::HANDLE> for ThreadHandle {
+    fn into_param(self) -> windows::core::Param<win::HANDLE> {
+        windows::core::Param::Owned(self.0)
     }
 }
 
@@ -149,9 +160,9 @@ impl From<SidPtr> for win::PSID {
     }
 }
 
-impl From<&SidPtr> for win::PSID {
-    fn from(ptr: &SidPtr) -> Self {
-        ptr.0
+impl IntoParam<win::PSID> for SidPtr {
+    fn into_param(self) -> windows::core::Param<win::PSID> {
+        windows::core::Param::Owned(self.0)
     }
 }
 
@@ -167,7 +178,7 @@ impl SidPtr {
 
     /// Checks whether `self` points to a valid SID.
     #[must_use]
-    fn is_valid(&self) -> bool {
+    fn is_valid(self) -> bool {
         if self.0.is_invalid() {
             return false;
         }
@@ -181,9 +192,9 @@ impl SidPtr {
     /// # Safety
     /// Requires `self` to point to a valid SID.
     #[must_use]
-    pub unsafe fn len(&self) -> u32 {
+    pub unsafe fn len(self) -> u32 {
         debug_assert!(self.is_valid());
-        unsafe { win::GetLengthSid(self) }
+        unsafe { win::GetLengthSid(self.into()) }
     }
 }
 
@@ -387,7 +398,7 @@ unsafe fn initialize_acl(
     revision: win::ACE_REVISION,
 ) -> anyhow::Result<()> {
     // SAFETY: uphold by caller
-    unsafe { win::InitializeAcl(acl, acl_len, revision.0) }
+    unsafe { win::InitializeAcl(acl, acl_len, revision) }
         .ok()
         .map_anyhow()?;
     Ok(())
@@ -404,7 +415,7 @@ unsafe fn initialize_acl(
 /// and <https://docs.microsoft.com/en-us/windows/win32/secauthz/security-information> for more
 /// information.
 unsafe fn set_security_info(
-    handle: win::HANDLE,
+    handle: impl IntoParam<win::HANDLE>,
     obj_type: win::SE_OBJECT_TYPE,
     sec_info: win::OBJECT_SECURITY_INFORMATION,
     owner: SidPtr,
@@ -517,7 +528,7 @@ impl AclBox {
     /// `handle` must point to a valid object of type `obj_type`.
     pub unsafe fn set_protected(
         &self,
-        handle: impl Into<win::HANDLE>,
+        handle: impl IntoParam<win::HANDLE>,
         obj_type: win::SE_OBJECT_TYPE,
     ) -> anyhow::Result<()> {
         // change only DACL, do not inherit ACEs
@@ -528,7 +539,7 @@ impl AclBox {
         // SAFETY: `handle` validity is uphold by the caller
         unsafe {
             set_security_info(
-                handle.into(),
+                handle,
                 obj_type,
                 sec_info,
                 SidPtr::null(),
