@@ -1,5 +1,14 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## 0.3.1 - 2023-05-04
+### Internal
+- Updated `windows` and `rustix` dependencies.
+
 ## 0.3.0 - 2022-11-25
 ### Added
 - tracer detection techniques.
@@ -17,14 +26,14 @@
 - Overhauled error handling, now using [`anyhow`](https://crates.io/crates/anyhow), with new `Error`
   and `Result` types in the `error` module. Errors should now be much more informative.
 - Switched to [`rustix`](https://crates.io/crates/rustix) for most unix-like OS bindings. As a
-  result, on linux the crate doesn't depend on a libc anymore (when using no_std).
+  result, on linux the crate doesn't depend on a libc anymore (when using `no_std`).
 
 ## 0.2.1 - 2022-10-04
-### Changed
-- Use constants in `libc` for the FreeBSD `procctl` code.
-
 ### Fixed
 - wrong `debug_assert!` on FreeBSD in the `procctl` code.
+
+### Internal
+- Use constants in `libc` for the FreeBSD `procctl` code.
 
 ## 0.2.0 - 2022-09-16
 ### Added
@@ -34,7 +43,8 @@
 - Switched from `winapi` to `windows` crate for Windows bindings.
 
 ## 0.1.1 - 2022-01-08
-- Added Windows DACL support: `harden_process` now sets a restricted DACL on windows.
+### Added
+- Windows DACL support: `harden_process` now sets a restricted DACL on windows.
 
 ## 0.1.0 - 2021-11-03
 Initial version.
