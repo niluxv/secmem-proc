@@ -149,7 +149,7 @@
 //!   kernel structure `KUSER_SHARED_DATA` (unstable, anti-tracing)
 //!
 //! # Anti-tracing
-//! The hardening methods employed by this crate can be devided into two groups:
+//! The hardening methods employed by this crate can be divided into two groups:
 //! * security related process hardening, and
 //! * anti-tracing.
 //!
