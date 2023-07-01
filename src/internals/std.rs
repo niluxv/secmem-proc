@@ -6,13 +6,15 @@ pub struct TracerPidNotFound;
 /// Check whether the current process is being traced by reading
 /// `/proc/self/status`. Returns the tracer pid or `0` if not traced.
 #[cfg(target_os = "linux")]
-fn get_tracer_pid() -> anyhow::Result<usize> {
-    let fd = rustix::io::proc_self_status()?;
+fn get_tracer_pid() -> anyhow::Result<rustix::process::RawPid> {
+    let fd = rustix::procfs::proc_self_status()?;
     let file = std::fs::File::from(fd);
     let status = std::io::read_to_string(file)?;
     for line in status.lines() {
-        if let Some(tracer_pid_str) = line.strip_prefix("TracerPid:") {
-            return Ok(tracer_pid_str.trim().parse()?);
+        if let Some(mut tracer_pid_str) = line.strip_prefix("TracerPid:") {
+            tracer_pid_str = tracer_pid_str.trim();
+            let raw_pid: rustix::process::RawPid = tracer_pid_str.parse()?;
+            return Ok(raw_pid);
         }
     }
     Err(anyhow::Error::new(TracerPidNotFound))
@@ -21,10 +23,15 @@ fn get_tracer_pid() -> anyhow::Result<usize> {
 /// Check whether the current process is being traced by reading
 /// `/proc/self/status`.
 #[cfg(target_os = "linux")]
-pub fn is_tracer_present() -> anyhow::Result<Option<rustix::process::RawNonZeroPid>> {
-    let tracer_pid = get_tracer_pid()?;
-    let pid = rustix::process::RawPid::try_from(tracer_pid)?;
-    Ok(rustix::process::RawNonZeroPid::new(pid))
+pub fn is_tracer_present() -> anyhow::Result<Option<rustix::process::Pid>> {
+    let raw_tracer_pid = get_tracer_pid()?;
+    if raw_tracer_pid == 0 {
+        Ok(None)
+    } else {
+        let pid = rustix::process::Pid::from_raw(raw_tracer_pid)
+            .ok_or(anyhow::Error::new(TracerPidNotFound))?;
+        Ok(Some(pid))
+    }
 }
 
 #[cfg(test)]

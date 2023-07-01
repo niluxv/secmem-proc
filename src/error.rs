@@ -134,12 +134,12 @@ pub enum Error {
 #[derive(Debug, Clone)]
 pub struct Traced {
     #[cfg(unix)]
-    pid: Option<rustix::process::RawNonZeroPid>,
+    pid: Option<rustix::process::Pid>,
 }
 
 #[cfg(unix)]
 impl Traced {
-    pub(crate) fn from_pid(pid: rustix::process::RawNonZeroPid) -> Self {
+    pub(crate) fn from_pid(pid: rustix::process::Pid) -> Self {
         Self { pid: Some(pid) }
     }
 }
@@ -156,7 +156,7 @@ impl core::fmt::Display for Traced {
             Some(pid) => write!(
                 formatter,
                 "program is being traced by the process with pid {}",
-                pid
+                pid.as_raw_nonzero()
             ),
             None => formatter.write_str("program is being traced"),
         }
