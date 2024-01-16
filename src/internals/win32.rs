@@ -14,6 +14,8 @@ use windows::core::IntoParam;
 #[allow(non_upper_case_globals)]
 mod win {
     // import functions
+    #[cfg(feature = "unstable")]
+    pub(super) use windows::Wdk::System::Threading::NtSetInformationThread;
     pub(super) use windows::Win32::Foundation::CloseHandle;
     pub(super) use windows::Win32::Security::Authorization::SetSecurityInfo;
     pub(super) use windows::Win32::Security::{
@@ -23,8 +25,6 @@ mod win {
     pub(super) use windows::Win32::System::Diagnostics::Debug::{
         CheckRemoteDebuggerPresent, IsDebuggerPresent,
     };
-    #[cfg(feature = "unstable")]
-    pub(super) use windows::Win32::System::Threading::NtSetInformationThread;
     pub(super) use windows::Win32::System::Threading::{
         GetCurrentProcess, GetCurrentThread, OpenProcessToken,
     };
@@ -39,20 +39,11 @@ mod win {
     pub(super) use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
 
     // import constants
+    #[cfg(feature = "unstable")]
+    pub(super) use windows::Wdk::System::Threading::ThreadHideFromDebugger;
     pub(super) use windows::Win32::Security::{
         TokenUser, ACL_REVISION, DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION,
     };
-
-    // define constants
-    #[cfg(feature = "unstable")]
-    mod unstable {
-        use windows::Win32::System::Threading::THREADINFOCLASS;
-        // SOURCE:
-        // <https://anti-debug.checkpoint.com/techniques/interactive.html#ntsetinformationthread>
-        pub(crate) const ThreadHideFromDebugger: THREADINFOCLASS = THREADINFOCLASS(0x11);
-    }
-    #[cfg(feature = "unstable")]
-    pub(super) use unstable::*;
 }
 
 /// Process handle.
@@ -114,7 +105,6 @@ pub fn is_debugger_present() -> bool {
 pub unsafe fn is_remote_debugger_present(process_handle: ProcessHandle) -> anyhow::Result<bool> {
     let mut debugger = win::BOOL(0);
     unsafe { win::CheckRemoteDebuggerPresent(process_handle, &mut debugger as *mut _) }
-        .ok()
         .map_anyhow()?;
     Ok(debugger.as_bool())
 }
@@ -133,6 +123,7 @@ pub unsafe fn hide_thread_from_debugger(thread_handle: ThreadHandle) -> anyhow::
             0,
         )
     }
+    .ok()
     .map_anyhow()?;
     Ok(())
 }
@@ -264,7 +255,6 @@ impl AccessToken {
     ) -> anyhow::Result<Self> {
         let mut token_handle = win::HANDLE(0);
         unsafe { win::OpenProcessToken(handle, access, &mut token_handle as *mut win::HANDLE) }
-            .ok()
             .map_anyhow()?;
         Ok(AccessToken(token_handle))
     }
@@ -273,9 +263,9 @@ impl AccessToken {
     pub fn get_token_user(&self) -> anyhow::Result<TokenUserBox> {
         // Get the required length of the buffer
         let mut length: u32 = 0;
-        unsafe {
-            win::GetTokenInformation(self.0, win::TokenUser, None, 0, &mut length as *mut u32);
-        }
+        let _ = unsafe {
+            win::GetTokenInformation(self.0, win::TokenUser, None, 0, &mut length as *mut u32)
+        };
 
         // Allocate buffer of this length
         // SAFETY: 4 is power of 2, size is always sufficiently small
@@ -301,7 +291,6 @@ impl AccessToken {
                 &mut length as *mut u32,
             )
         }
-        .ok()
         .map_anyhow()?;
 
         Ok(token_user)
@@ -360,9 +349,7 @@ unsafe fn add_allowed_ace(
     sid: SidRef<'_>,
 ) -> anyhow::Result<()> {
     // SAFETY: uphold by caller
-    unsafe { win::AddAccessAllowedAce(acl, revision, access_mask.0, sid.as_ptr()) }
-        .ok()
-        .map_anyhow()?;
+    unsafe { win::AddAccessAllowedAce(acl, revision, access_mask.0, sid.as_ptr()) }.map_anyhow()?;
     Ok(())
 }
 
@@ -383,9 +370,7 @@ unsafe fn add_denied_ace(
     sid: SidRef<'_>,
 ) -> anyhow::Result<()> {
     // SAFETY: uphold by caller
-    unsafe { win::AddAccessDeniedAce(acl, revision, access_mask.0, sid.as_ptr()) }
-        .ok()
-        .map_anyhow()?;
+    unsafe { win::AddAccessDeniedAce(acl, revision, access_mask.0, sid.as_ptr()) }.map_anyhow()?;
     Ok(())
 }
 
@@ -398,9 +383,7 @@ unsafe fn initialize_acl(
     revision: win::ACE_REVISION,
 ) -> anyhow::Result<()> {
     // SAFETY: uphold by caller
-    unsafe { win::InitializeAcl(acl, acl_len, revision) }
-        .ok()
-        .map_anyhow()?;
+    unsafe { win::InitializeAcl(acl, acl_len, revision) }.map_anyhow()?;
     Ok(())
 }
 
@@ -423,8 +406,7 @@ unsafe fn set_security_info(
     dacl: Option<*const win::ACL>,
     sacl: Option<*const win::ACL>,
 ) -> anyhow::Result<()> {
-    unsafe { win::SetSecurityInfo(handle, obj_type, sec_info.0, owner, group, dacl, sacl) }
-        .ok()
+    unsafe { win::SetSecurityInfo(handle, obj_type, sec_info, owner, group, dacl, sacl) }
         .map_anyhow()?;
     Ok(())
 }

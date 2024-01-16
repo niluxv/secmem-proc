@@ -20,9 +20,9 @@ all-features = true
 [features]
 default = ["std"]
 # enable functionality requiring std; note that on Windows we always depend on std transitively via the windows crate
-std = ["thiserror", "anyhow/std", "rustix/std", "rustix/procfs"]
+std = ["dep:thiserror", "anyhow/std", "rustix/std", "rustix/procfs"]
 # enable anti-tracing techniques using unstable/undocumented APIs/OS implementation details
-unstable = []
+unstable = ["windows/Wdk_System_Threading"]
 # required features to run tests; additional features enable more tests
 dev = []
 
@@ -38,7 +38,7 @@ rustix = { version = "0.38", default-features = false, features = ["process"] }
 libc = "0.2.107"
 
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.48", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Security_Authorization", "Win32_System_Diagnostics_Debug"] }
+windows = { version = "0.52", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_Security_Authorization", "Win32_System_Diagnostics_Debug"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"
