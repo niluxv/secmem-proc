@@ -1,4 +1,4 @@
-# secmem-proc ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue) [![secmem-proc on crates.io](https://img.shields.io/crates/v/secmem-proc)](https://crates.io/crates/secmem-proc) [![secmem-proc on docs.rs](https://docs.rs/secmem-proc/badge.svg)](https://docs.rs/secmem-proc) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/niluxv/secmem-proc) ![Rust Version: ^1.65](https://img.shields.io/badge/rustc-%5E1.65-orange.svg)
+# secmem-proc ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue) [![secmem-proc on crates.io](https://img.shields.io/crates/v/secmem-proc)](https://crates.io/crates/secmem-proc) [![secmem-proc on docs.rs](https://docs.rs/secmem-proc/badge.svg)](https://docs.rs/secmem-proc) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/niluxv/secmem-proc) ![Rust Version: 1.65.0](https://img.shields.io/badge/rustc-1.65.0-orange.svg)
 
 `secmem-proc` is a crate designed to harden a process against *low-privileged* attackers running on the same system trying to obtain secret memory contents of the current process. More specifically, the crate disables core dumps, makes a best effort to disable the ability to trace it, and makes a minimal effort to detect already attached tracers.
 
@@ -134,13 +134,13 @@ The difference between the two lies in the thread model. Process hardening mostl
  - improve tests (how exactly?)
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG71F3OPwqbpvG9IQ5w6Zri17Gx1ipmWFPJ-eG-CMco2qCPLiYXKEGyPM5-YjoIUtG9KagKma_KLrG10br38MMRBdGwZt0gEtp2GEYWSBg2tzZWNtZW0tcHJvY2UwLjMuMmtzZWNtZW1fcHJvYw
- [__link0]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/?search=harden::harden_process
- [__link1]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/win_acl/index.html
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG71F3OPwqbpvG9IQ5w6Zri17Gx1ipmWFPJ-eG-CMco2qCPLiYXKEGyPM5-YjoIUtG9KagKma_KLrG10br38MMRBdGwZt0gEtp2GEYWSBg2tzZWNtZW0tcHJvY2UwLjMuM2tzZWNtZW1fcHJvYw
+ [__link0]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/?search=harden::harden_process
+ [__link1]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/win_acl/index.html
  [__link2]: https://crates.io/crates/windows
- [__link3]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/config/index.html
- [__link4]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/win_acl/index.html
- [__link5]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/?search=config::Config::set_win_dacl_custom_user_perm
- [__link6]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/?search=config::Config
- [__link7]: https://docs.rs/secmem-proc/0.3.2/secmem_proc/?search=config::Config::set_anti_tracing
+ [__link3]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/config/index.html
+ [__link4]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/win_acl/index.html
+ [__link5]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/?search=config::Config::set_win_dacl_custom_user_perm
+ [__link6]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/?search=config::Config
+ [__link7]: https://docs.rs/secmem-proc/0.3.3/secmem_proc/?search=config::Config::set_anti_tracing
 
