@@ -59,6 +59,27 @@ jobs:
           command: test
           args: --all-features
 
+  cross_check:
+    name: Cross Check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-target: [x86_64-unknown-freebsd]
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Run cargo test
+        uses: clechasseur/rs-cargo@v2
+        with:
+          command: check
+          args: --target ${{ matrix.rust-target }}
+
   doc:
     name: Documentation
     runs-on: ubuntu-latest
