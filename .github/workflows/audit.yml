@@ -8,12 +8,19 @@ on:
 
 jobs:
   audit:
-    name: Cargo Audit
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout sources
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
+
       - name: Run cargo audit
-        uses: actions-rs/audit-check@v1
+        uses: rustsec/audit-check@v1.4.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+    permissions:
+        # to create issues
+        issues: write
+        # to create check
+        checks: write
