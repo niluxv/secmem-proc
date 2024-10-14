@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.4 - 2024-10-14
+### Fixed
+- Fixed the compilation error on FreeBSD due to missing `RawNonZeroPid` being removed from `rustix`
+  in version `0.38`.
+
 ## 0.3.3 - 2024-01-17
 ### Internal
 - Updated `windows` dependency to `0.52`.
