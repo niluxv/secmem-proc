@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## 0.3.5 - 2024-11-17
+### Internal
+- Updated `windows` dependency to `0.58`. Note that this increases the MSRV for `windows` to 1.70
+  (which is already over a year old by now). The MSRV of `secmem-proc` itself stays 1.65.
+
 ## 0.3.4 - 2024-10-14
 ### Fixed
 - Fixed the compilation error on FreeBSD due to missing `RawNonZeroPid` being removed from `rustix`
