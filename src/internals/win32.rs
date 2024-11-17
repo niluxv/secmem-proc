@@ -9,7 +9,7 @@ use alloc::alloc;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::ptr::NonNull;
-use windows::core::IntoParam;
+use windows::core::{Param, ParamValue};
 
 #[allow(non_upper_case_globals)]
 mod win {
@@ -30,8 +30,9 @@ mod win {
     };
 
     // import structures
-    pub(super) use windows::Win32::Foundation::{BOOL, HANDLE, PSID};
+    pub(super) use windows::Win32::Foundation::{BOOL, HANDLE};
     pub(super) use windows::Win32::Security::Authorization::SE_OBJECT_TYPE;
+    pub(super) use windows::Win32::Security::PSID;
     pub(super) use windows::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, ACE_REVISION, ACL, OBJECT_SECURITY_INFORMATION,
         TOKEN_ACCESS_MASK, TOKEN_USER,
@@ -61,18 +62,18 @@ impl From<ThreadHandle> for win::HANDLE {
         handle.0
     }
 }
-impl IntoParam<win::HANDLE> for ProcessHandle {
-    fn into_param(self) -> windows::core::Param<win::HANDLE> {
-        windows::core::Param::Owned(self.0)
+impl Param<win::HANDLE> for ProcessHandle {
+    unsafe fn param(self) -> ParamValue<win::HANDLE> {
+        ParamValue::Owned(self.0)
     }
 }
-impl IntoParam<win::HANDLE> for ThreadHandle {
-    fn into_param(self) -> windows::core::Param<win::HANDLE> {
-        windows::core::Param::Owned(self.0)
+impl Param<win::HANDLE> for ThreadHandle {
+    unsafe fn param(self) -> ParamValue<win::HANDLE> {
+        ParamValue::Owned(self.0)
     }
 }
 
-/// Creates pseudo-handle to the current process. Needs not be closed.
+/// Creates pseudo-handle to the current process. Need not be closed.
 #[must_use]
 pub fn get_process_handle() -> ProcessHandle {
     // calling `GetCurrentProcess` just returns a constant, is safe and cannot fail
@@ -151,9 +152,9 @@ impl From<SidPtr> for win::PSID {
     }
 }
 
-impl IntoParam<win::PSID> for SidPtr {
-    fn into_param(self) -> windows::core::Param<win::PSID> {
-        windows::core::Param::Owned(self.0)
+impl Param<win::PSID> for SidPtr {
+    unsafe fn param(self) -> ParamValue<win::PSID> {
+        ParamValue::Owned(self.0)
     }
 }
 
@@ -253,7 +254,7 @@ impl AccessToken {
         handle: ProcessHandle,
         access: win::TOKEN_ACCESS_MASK,
     ) -> anyhow::Result<Self> {
-        let mut token_handle = win::HANDLE(0);
+        let mut token_handle = win::HANDLE(core::ptr::null_mut());
         unsafe { win::OpenProcessToken(handle, access, &mut token_handle as *mut win::HANDLE) }
             .map_anyhow()?;
         Ok(AccessToken(token_handle))
@@ -398,7 +399,7 @@ unsafe fn initialize_acl(
 /// and <https://docs.microsoft.com/en-us/windows/win32/secauthz/security-information> for more
 /// information.
 unsafe fn set_security_info(
-    handle: impl IntoParam<win::HANDLE>,
+    handle: impl Param<win::HANDLE>,
     obj_type: win::SE_OBJECT_TYPE,
     sec_info: win::OBJECT_SECURITY_INFORMATION,
     owner: SidPtr,
@@ -407,6 +408,7 @@ unsafe fn set_security_info(
     sacl: Option<*const win::ACL>,
 ) -> anyhow::Result<()> {
     unsafe { win::SetSecurityInfo(handle, obj_type, sec_info, owner, group, dacl, sacl) }
+        .ok()
         .map_anyhow()?;
     Ok(())
 }
@@ -510,7 +512,7 @@ impl AclBox {
     /// `handle` must point to a valid object of type `obj_type`.
     pub unsafe fn set_protected(
         &self,
-        handle: impl IntoParam<win::HANDLE>,
+        handle: impl Param<win::HANDLE>,
         obj_type: win::SE_OBJECT_TYPE,
     ) -> anyhow::Result<()> {
         // change only DACL, do not inherit ACEs
