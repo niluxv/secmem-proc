@@ -7,7 +7,7 @@ pub struct TracerPidNotFound;
 /// `/proc/self/status`. Returns the tracer pid or `0` if not traced.
 #[cfg(target_os = "linux")]
 fn get_tracer_pid() -> anyhow::Result<rustix::process::RawPid> {
-    let fd = rustix::procfs::proc_self_status()?;
+    let fd = rustix_linux_procfs::proc_self_status()?;
     let file = std::fs::File::from(fd);
     let status = std::io::read_to_string(file)?;
     for line in status.lines() {
