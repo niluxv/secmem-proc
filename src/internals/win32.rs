@@ -9,7 +9,6 @@ use alloc::alloc;
 use core::alloc::Layout;
 use core::ffi::c_void;
 use core::ptr::NonNull;
-use windows::core::{Param, ParamValue};
 
 #[allow(non_upper_case_globals)]
 mod win {
@@ -30,7 +29,8 @@ mod win {
     };
 
     // import structures
-    pub(super) use windows::Win32::Foundation::{BOOL, HANDLE};
+    pub(super) use windows::core::BOOL;
+    pub(super) use windows::Win32::Foundation::HANDLE;
     pub(super) use windows::Win32::Security::Authorization::SE_OBJECT_TYPE;
     pub(super) use windows::Win32::Security::PSID;
     pub(super) use windows::Win32::Security::{
@@ -60,16 +60,6 @@ impl From<ProcessHandle> for win::HANDLE {
 impl From<ThreadHandle> for win::HANDLE {
     fn from(handle: ThreadHandle) -> Self {
         handle.0
-    }
-}
-impl Param<win::HANDLE> for ProcessHandle {
-    unsafe fn param(self) -> ParamValue<win::HANDLE> {
-        ParamValue::Owned(self.0)
-    }
-}
-impl Param<win::HANDLE> for ThreadHandle {
-    unsafe fn param(self) -> ParamValue<win::HANDLE> {
-        ParamValue::Owned(self.0)
     }
 }
 
@@ -105,7 +95,7 @@ pub fn is_debugger_present() -> bool {
 /// `process_handle` must be a valid process handle
 pub unsafe fn is_remote_debugger_present(process_handle: ProcessHandle) -> anyhow::Result<bool> {
     let mut debugger = win::BOOL(0);
-    unsafe { win::CheckRemoteDebuggerPresent(process_handle, &mut debugger as *mut _) }
+    unsafe { win::CheckRemoteDebuggerPresent(process_handle.into(), &mut debugger as *mut _) }
         .map_anyhow()?;
     Ok(debugger.as_bool())
 }
@@ -118,7 +108,7 @@ pub unsafe fn is_remote_debugger_present(process_handle: ProcessHandle) -> anyho
 pub unsafe fn hide_thread_from_debugger(thread_handle: ThreadHandle) -> anyhow::Result<()> {
     unsafe {
         win::NtSetInformationThread(
-            thread_handle,
+            thread_handle.into(),
             win::ThreadHideFromDebugger,
             core::ptr::null(),
             0,
@@ -152,9 +142,13 @@ impl From<SidPtr> for win::PSID {
     }
 }
 
-impl Param<win::PSID> for SidPtr {
-    unsafe fn param(self) -> ParamValue<win::PSID> {
-        ParamValue::Owned(self.0)
+impl From<SidPtr> for Option<win::PSID> {
+    fn from(ptr: SidPtr) -> Self {
+        if ptr.0 .0.is_null() {
+            None
+        } else {
+            Some(ptr.0)
+        }
     }
 }
 
@@ -176,7 +170,7 @@ impl SidPtr {
         }
         // SAFETY: `IsValidSid` requires non-null `PSID`; this is handled by the
         // `is_invalid` check above
-        unsafe { win::IsValidSid(self) }.as_bool()
+        unsafe { win::IsValidSid(self.into()) }.as_bool()
     }
 
     /// Returns the length of the SID that `self` points to.
@@ -255,8 +249,10 @@ impl AccessToken {
         access: win::TOKEN_ACCESS_MASK,
     ) -> anyhow::Result<Self> {
         let mut token_handle = win::HANDLE(core::ptr::null_mut());
-        unsafe { win::OpenProcessToken(handle, access, &mut token_handle as *mut win::HANDLE) }
-            .map_anyhow()?;
+        unsafe {
+            win::OpenProcessToken(handle.into(), access, &mut token_handle as *mut win::HANDLE)
+        }
+        .map_anyhow()?;
         Ok(AccessToken(token_handle))
     }
 
@@ -350,7 +346,8 @@ unsafe fn add_allowed_ace(
     sid: SidRef<'_>,
 ) -> anyhow::Result<()> {
     // SAFETY: uphold by caller
-    unsafe { win::AddAccessAllowedAce(acl, revision, access_mask.0, sid.as_ptr()) }.map_anyhow()?;
+    unsafe { win::AddAccessAllowedAce(acl, revision, access_mask.0, sid.as_ptr().into()) }
+        .map_anyhow()?;
     Ok(())
 }
 
@@ -371,7 +368,8 @@ unsafe fn add_denied_ace(
     sid: SidRef<'_>,
 ) -> anyhow::Result<()> {
     // SAFETY: uphold by caller
-    unsafe { win::AddAccessDeniedAce(acl, revision, access_mask.0, sid.as_ptr()) }.map_anyhow()?;
+    unsafe { win::AddAccessDeniedAce(acl, revision, access_mask.0, sid.as_ptr().into()) }
+        .map_anyhow()?;
     Ok(())
 }
 
@@ -399,7 +397,7 @@ unsafe fn initialize_acl(
 /// and <https://docs.microsoft.com/en-us/windows/win32/secauthz/security-information> for more
 /// information.
 unsafe fn set_security_info(
-    handle: impl Param<win::HANDLE>,
+    handle: impl Into<win::HANDLE>,
     obj_type: win::SE_OBJECT_TYPE,
     sec_info: win::OBJECT_SECURITY_INFORMATION,
     owner: SidPtr,
@@ -407,9 +405,19 @@ unsafe fn set_security_info(
     dacl: Option<*const win::ACL>,
     sacl: Option<*const win::ACL>,
 ) -> anyhow::Result<()> {
-    unsafe { win::SetSecurityInfo(handle, obj_type, sec_info, owner, group, dacl, sacl) }
-        .ok()
-        .map_anyhow()?;
+    unsafe {
+        win::SetSecurityInfo(
+            handle.into(),
+            obj_type,
+            sec_info,
+            owner.into(),
+            group.into(),
+            dacl,
+            sacl,
+        )
+    }
+    .ok()
+    .map_anyhow()?;
     Ok(())
 }
 
@@ -512,7 +520,7 @@ impl AclBox {
     /// `handle` must point to a valid object of type `obj_type`.
     pub unsafe fn set_protected(
         &self,
-        handle: impl Param<win::HANDLE>,
+        handle: impl Into<win::HANDLE>,
         obj_type: win::SE_OBJECT_TYPE,
     ) -> anyhow::Result<()> {
         // change only DACL, do not inherit ACEs
