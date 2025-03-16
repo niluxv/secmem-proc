@@ -5,16 +5,9 @@
 mod sys_err {
     #[cfg(not(feature = "std"))]
     mod internal {
-        use core::fmt;
-
-        #[derive(Debug)]
+        #[derive(Debug, thiserror::Error)]
+        #[error("system error")]
         pub(crate) struct SysErr;
-
-        impl fmt::Display for SysErr {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str("system error")
-            }
-        }
 
         impl SysErr {
             pub fn create() -> Self {
@@ -29,16 +22,9 @@ mod sys_err {
 
     #[cfg(feature = "std")]
     mod internal {
-        use core::fmt;
-
         #[derive(Debug, thiserror::Error)]
+        #[error("system error: {0}")]
         pub(crate) struct SysErr(std::io::Error);
-
-        impl fmt::Display for SysErr {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "system error: {}", self.0)
-            }
-        }
 
         impl SysErr {
             pub fn create() -> Self {
@@ -59,19 +45,11 @@ pub(crate) use sys_err::SysErr;
 
 /// Private error types.
 pub(crate) mod private {
-    use core::fmt;
-
     /// Error indicating that the global allocator returned a zero pointer,
     /// possibly due to OOM.
-    #[derive(Debug, Clone)]
-    #[cfg_attr(feature = "std", derive(thiserror::Error))]
+    #[derive(Debug, Clone, thiserror::Error)]
+    #[error("allocation error, possibly OOM")]
     pub(crate) struct AllocError(core::alloc::Layout);
-
-    impl fmt::Display for AllocError {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str("allocation error, possibly OOM")
-        }
-    }
 
     impl AllocError {
         /// Create a new alloc error from a layout.
@@ -94,7 +72,7 @@ pub(crate) mod private {
         fn map_anyhow(self) -> anyhow::Result<Self::T>;
     }
 
-    impl<T, E: Send + Sync + fmt::Debug + fmt::Display + 'static> ResultExt
+    impl<T, E: Send + Sync + core::fmt::Debug + core::fmt::Display + 'static> ResultExt
         for core::result::Result<T, E>
     {
         type T = T;
@@ -118,14 +96,15 @@ pub type Result = core::result::Result<(), Error>;
 /// cases, and prints more information about the detected debugger/tracer if
 /// available.
 #[must_use]
-#[cfg_attr(feature = "std", derive(thiserror::Error))]
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// A debugger was detected. The [`Traced`] typed field might contain more
     /// information about the debugger/tracer.
+    #[error("{0}")]
     BeingTraced(Traced),
     /// An internal error occurred. Contains an [`anyhow::Error`] with the
     /// internal error.
+    #[error("{0}")]
     Err(anyhow::Error),
 }
 
@@ -165,15 +144,6 @@ impl core::fmt::Display for Traced {
     #[cfg(not(unix))]
     fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         formatter.write_str("program is being traced")
-    }
-}
-
-impl core::fmt::Display for Error {
-    fn fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::BeingTraced(tr) => tr.fmt(formatter),
-            Self::Err(e) => e.fmt(formatter),
-        }
     }
 }
 

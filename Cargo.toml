@@ -10,6 +10,7 @@ categories = ["no-std", "cryptography", "os"]
 keywords = ["secure", "memory", "process", "hardening"]
 repository = "https://github.com/niluxv/secmem-proc"
 include = ["src/**/*", "COPYING", "LICENSE.*", "README.md"]
+# 1.81 when the (default) `std` feature is disabled; dependencies might have higher MSRV
 rust-version = "1.65"
 
 [package.metadata.docs.rs]
@@ -20,7 +21,7 @@ all-features = true
 [features]
 default = ["std"]
 # enable functionality requiring std; note that on Windows we always depend on std transitively via the windows crate
-std = ["dep:thiserror", "anyhow/std", "rustix/std", "dep:rustix-linux-procfs"]
+std = ["anyhow/std", "rustix/std", "dep:rustix-linux-procfs", "thiserror/std"]
 # enable anti-tracing techniques using unstable/undocumented APIs/OS implementation details
 unstable = ["windows/Wdk_System_Threading"]
 # required features to run tests; additional features enable more tests
@@ -29,7 +30,7 @@ dev = []
 [dependencies]
 anyhow = { version = "1.0", default-features = false }
 cfg-if = "1.0"
-thiserror = { version = "2.0", optional = true }
+thiserror = { version = "2.0", default-features = false }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1.0", default-features = false, features = ["process"] }
