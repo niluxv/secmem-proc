@@ -124,8 +124,8 @@
 //!
 //! # Cargo features
 //! - `std` (default): Enable functionality that requires `std`. Currently
-//!   required for `Error` implements, anti-tracing on Linux via
-//!   `/proc/self/status` and tests. This feature is enabled by default.
+//!   required for anti-tracing on Linux via `/proc/self/status`. This feature
+//!   is enabled by default.
 //! - `unstable`: Enable functionality that depends on undocumented or unstable
 //!   OS/platform details. This feature only enables support for these; to
 //!   actually enable these anti-debugging methods, they have to be specifically

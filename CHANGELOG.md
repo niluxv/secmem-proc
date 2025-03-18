@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.6 - 2025-03-18
+### Changed
+- Implemented `core::error::Error` for error structures even in no-std mode. Note that this
+  increases the MSRV to 1.82 when the (default) `std` feature is disable. With default features
+  the MSRV is unchanged.
+
+### Internal
+- Updated `windows` dependency to `0.60`. Note that this increases the MSRV for `windows` to 1.74.
+  (which is already over a year old by now). The MSRV of `secmem-proc` itself stays 1.65.
+- Updated `thiserror` dependency to `2`.
+- Updated `rustix` dependency to `1`.
 
 ## 0.3.5 - 2024-11-17
 ### Internal
