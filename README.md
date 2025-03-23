@@ -167,18 +167,13 @@ by a tracer/debugger, though some are harder to work around than others.
 difficult one to work around.) Anti-tracing can be disabled using
 [`Config::set_anti_tracing(false)`][__link7].
 
-## TODOs
 
- - improve tests (how exactly?)
-
-
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG71F3OPwqbpvG9IQ5w6Zri17Gx1ipmWFPJ-eG-CMco2qCPLiYXKEG8lkptmLxZJsG_25AfZOt-uQG6Fho7Wj4MqeG8jUIo7JWaZwYWSBg2tzZWNtZW0tcHJvY2UwLjMuNmtzZWNtZW1fcHJvYw
- [__link0]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/?search=harden::harden_process
- [__link1]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/win_acl/index.html
+ [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG8lkptmLxZJsG_25AfZOt-uQG6Fho7Wj4MqeG8jUIo7JWaZwYWSBg2tzZWNtZW0tcHJvY2UwLjMuN2tzZWNtZW1fcHJvYw
+ [__link0]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=harden::harden_process
+ [__link1]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/win_acl/index.html
  [__link2]: https://crates.io/crates/windows
- [__link3]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/config/index.html
- [__link4]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/win_acl/index.html
- [__link5]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/?search=config::Config::set_win_dacl_custom_user_perm
- [__link6]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/?search=config::Config
- [__link7]: https://docs.rs/secmem-proc/0.3.6/secmem_proc/?search=config::Config::set_anti_tracing
-
+ [__link3]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/config/index.html
+ [__link4]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/win_acl/index.html
+ [__link5]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=config::Config::set_win_dacl_custom_user_perm
+ [__link6]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=config::Config
+ [__link7]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=config::Config::set_anti_tracing
