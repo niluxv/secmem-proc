@@ -612,7 +612,6 @@ impl AclSize {
 }
 
 impl Default for AclSize {
-    #[must_use]
     fn default() -> Self {
         Self::new()
     }
