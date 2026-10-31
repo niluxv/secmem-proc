@@ -1,13 +1,12 @@
-use std::sync::LazyLock;
-
 #[cfg(target_os = "linux")]
 use predicates::prelude::PredicateBooleanExt;
+use std::sync::LazyLock;
 
 static TEST_PROGRAM: LazyLock<escargot::CargoRun> = LazyLock::new(build_test_program);
 
 fn build_test_program() -> escargot::CargoRun {
     escargot::CargoBuild::new()
-        .example("test_program")
+        .example("test_print_secret")
         .run()
         .expect("failed to build test program")
 }
