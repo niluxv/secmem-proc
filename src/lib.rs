@@ -85,12 +85,13 @@
 //!         PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
 //!         PROCESS_TERMINATE,
 //!     };
+//!     use windows::Win32::Security::WinCreatorOwnerRightsSid;
 //!
-//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
+//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef};
 //!
-//!     // First obtain the SID of the process user
-//!     let user = TokenUser::process_user()?;
-//!     let sid = user.sid();
+//!     // First obtain the well-known owner rights SID
+//!     let mut buf = [0; 4];
+//!     let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 //!
 //!     // Now specify the ACL we want to create
 //!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else

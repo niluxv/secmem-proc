@@ -18,8 +18,8 @@ mod win {
     pub(super) use windows::Win32::Foundation::CloseHandle;
     pub(super) use windows::Win32::Security::Authorization::SetSecurityInfo;
     pub(super) use windows::Win32::Security::{
-        AddAccessAllowedAce, AddAccessDeniedAce, GetLengthSid, GetTokenInformation, InitializeAcl,
-        IsValidSid,
+        AddAccessAllowedAce, AddAccessDeniedAce, CreateWellKnownSid, GetLengthSid,
+        GetTokenInformation, InitializeAcl, IsValidSid,
     };
     pub(super) use windows::Win32::System::Diagnostics::Debug::{
         CheckRemoteDebuggerPresent, IsDebuggerPresent,
@@ -35,7 +35,7 @@ mod win {
     pub(super) use windows::Win32::Security::PSID;
     pub(super) use windows::Win32::Security::{
         ACCESS_ALLOWED_ACE, ACCESS_DENIED_ACE, ACE_REVISION, ACL, OBJECT_SECURITY_INFORMATION,
-        TOKEN_ACCESS_MASK, TOKEN_USER,
+        TOKEN_ACCESS_MASK, TOKEN_USER, WELL_KNOWN_SID_TYPE,
     };
     pub(super) use windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS;
 
@@ -224,6 +224,24 @@ impl<'a> SidRef<'a> {
     #[must_use]
     fn is_valid(&self) -> bool {
         self.ptr.is_valid()
+    }
+
+    pub fn well_known(
+        buf: &'a mut [u64; 4],
+        well_known_sid_type: win::WELL_KNOWN_SID_TYPE,
+    ) -> anyhow::Result<Self> {
+        let sid_buf = win::PSID(buf as *mut _ as *mut _);
+        let mut buf_size: u32 = core::mem::size_of::<[u64; 4]>() as u32;
+        unsafe {
+            win::CreateWellKnownSid(
+                well_known_sid_type,
+                None,
+                Some(sid_buf),
+                &mut buf_size as *mut _,
+            )
+        }?;
+        // SAFETY: `buf` lives for 'a, which is the lifetime of the return type
+        Ok(unsafe { Self::from_ptr(SidPtr(sid_buf)) })
     }
 }
 

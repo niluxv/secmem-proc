@@ -19,12 +19,13 @@
 //!         PROCESS_CREATE_PROCESS, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
 //!         PROCESS_TERMINATE,
 //!     };
+//!     use windows::Win32::Security::WinCreatorOwnerRightsSid;
 //!
-//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
+//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef};
 //!
-//!     // First obtain the SID of the process user
-//!     let user = TokenUser::process_user()?;
-//!     let sid = user.sid();
+//!     // First obtain the well-known owner rights SID
+//!     let mut buf = [0; 4];
+//!     let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 //!
 //!     // Now specify the ACL we want to create
 //!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else
@@ -251,8 +252,9 @@ mod tests {
     fn create_allow_ace_acl() {
         use windows::Win32::System::Threading::PROCESS_TERMINATE;
 
-        let user = TokenUser::process_user().expect("could not get process token user");
-        let sid = user.sid();
+        let mut buf = [0; 4];
+        let sid = SidRef::well_known(&mut buf, windows::Win32::Security::WinCreatorOwnerRightsSid)
+            .expect("could not create well-known owner rights sid");
 
         let acl_constructor = EmptyAcl::new();
         let acl_constructor = AddAllowAceAcl::new(acl_constructor, PROCESS_TERMINATE, sid);
@@ -263,8 +265,9 @@ mod tests {
     fn create_deny_ace_acl() {
         use windows::Win32::System::Threading::PROCESS_CREATE_PROCESS;
 
-        let user = TokenUser::process_user().expect("could not get process token user");
-        let sid = user.sid();
+        let mut buf = [0; 4];
+        let sid = SidRef::well_known(&mut buf, windows::Win32::Security::WinCreatorOwnerRightsSid)
+            .expect("could not create well-known owner rights sid");
 
         let acl_constructor = EmptyAcl::new();
         let acl_constructor = AddDenyAceAcl::new(acl_constructor, PROCESS_CREATE_PROCESS, sid);
