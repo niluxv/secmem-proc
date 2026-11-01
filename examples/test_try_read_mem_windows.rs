@@ -18,6 +18,8 @@ fn main() {
         _ => panic!("invalid mode"),
     };
 
+    platform::init();
+
     match mode {
         // Check that we can read the process memory when it is not hardened
         Mode::AssertSuccess => platform::assert_success(pid, addr),
@@ -27,32 +29,38 @@ fn main() {
 }
 #[cfg(not(windows))]
 mod platform {
+    pub fn init() {}
     pub fn assert_success(_pid: u32, _addr: usize) {}
     pub fn assert_failure(_pid: u32) {}
 }
 
 #[cfg(windows)]
 mod platform {
-    use std::error::Error;
-
     use windows::Win32::System;
     use System::Threading::{PROCESS_ACCESS_RIGHTS, PROCESS_VM_READ};
 
+    /// Handle to a process.
     #[derive(Copy, Clone, Debug)]
-    struct ProcessHandle(windows::Win32::Foundation::HANDLE);
+    pub struct ProcessHandle(windows::Win32::Foundation::HANDLE);
 
     impl ProcessHandle {
-        fn open(pid: u32, desired_access: PROCESS_ACCESS_RIGHTS) -> Result<Self, impl Error> {
-            unsafe { System::Threading::OpenProcess(desired_access, false, pid) }.map(|h| Self(h))
+        pub fn current_process() -> Self {
+            Self(unsafe { System::Threading::GetCurrentProcess() })
         }
 
-        fn read_memory<T>(self, addr: usize, buf: &mut T) -> Result<(), impl Error> {
+        pub fn open(pid: u32, desired_access: PROCESS_ACCESS_RIGHTS) -> anyhow::Result<Self> {
+            Ok(Self(unsafe {
+                System::Threading::OpenProcess(desired_access, false, pid)
+            }?))
+        }
+
+        pub fn read_memory<T>(self, addr: usize, buf: &mut T) -> anyhow::Result<()> {
             let hprocess = self.0;
             let lpbaseaddress = std::ptr::without_provenance(addr);
             let lpbuffer = buf as *mut T as *mut _;
             let nsize = std::mem::size_of::<T>();
 
-            unsafe {
+            Ok(unsafe {
                 System::Diagnostics::Debug::ReadProcessMemory(
                     hprocess,
                     lpbaseaddress,
@@ -60,8 +68,52 @@ mod platform {
                     nsize,
                     None,
                 )
-            }
+            }?)
         }
+    }
+
+    /// Handle to an access token.
+    #[derive(Debug)]
+    pub struct AccessToken(windows::Win32::Foundation::HANDLE);
+
+    impl Drop for AccessToken {
+        fn drop(&mut self) {
+            // SAFETY: safe since `self.0` must be an open (access token) handle
+            let res = unsafe { windows::Win32::Foundation::CloseHandle(self.0) };
+            res.unwrap()
+        }
+    }
+
+    impl AccessToken {
+        /// Given a process handle, this function returns a pointer to the process
+        /// token of this process.
+        pub fn open_process_token(
+            handle: ProcessHandle,
+            access: windows::Win32::Security::TOKEN_ACCESS_MASK,
+        ) -> anyhow::Result<Self> {
+            let mut token_handle = windows::Win32::Foundation::HANDLE(core::ptr::null_mut());
+            unsafe {
+                System::Threading::OpenProcessToken(handle.0, access, &mut token_handle as *mut _)
+            }?;
+            Ok(Self(token_handle))
+        }
+
+        pub fn disable_all_privileges(&self) -> anyhow::Result<()> {
+            Ok(unsafe {
+                windows::Win32::Security::AdjustTokenPrivileges(self.0, true, None, 0, None, None)
+            }?)
+        }
+    }
+
+    pub fn init() {
+        // Apparently GitHub Actions runners get the `SeDebugPrivilege` privilege, which bypasses
+        // all DACL checks, so we need to disable privileges before trying to mount the attack.
+        let proc = ProcessHandle::current_process();
+        let access = windows::Win32::Security::TOKEN_ADJUST_PRIVILEGES;
+        AccessToken::open_process_token(proc, access)
+            .expect("could not open process token with `TOKEN_ADJUST_PRIVILEGES` access")
+            .disable_all_privileges()
+            .expect("could not disable all privileges");
     }
 
     pub fn assert_success(pid: u32, addr: usize) {
