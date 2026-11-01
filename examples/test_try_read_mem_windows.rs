@@ -2,6 +2,7 @@ use std::str::FromStr;
 
 enum Mode {
     AssertSuccess,
+    AssertSuccessResetDacl,
     AssertFailure,
 }
 
@@ -15,15 +16,18 @@ fn main() {
     let mode = match args.next().expect("no mode argument").trim() {
         "assert_success" => Mode::AssertSuccess,
         "assert_failure" => Mode::AssertFailure,
+        "assert_success_reset_dacl" => Mode::AssertSuccessResetDacl,
         _ => panic!("invalid mode"),
     };
 
     platform::init();
 
     match mode {
-        // Check that we can read the process memory when it is not hardened
+        // Check that we can read the process memory
         Mode::AssertSuccess => platform::assert_success(pid, addr),
-        // Check we cannot read the process memory when it is hardened
+        // Check that we can read the process memory by first erasing the DACL for the process
+        Mode::AssertSuccessResetDacl => platform::assert_success_reset_dacl(pid, addr),
+        // Check we cannot read the process memory or reset the DACL
         Mode::AssertFailure => platform::assert_failure(pid),
     }
 }
@@ -31,13 +35,18 @@ fn main() {
 mod platform {
     pub fn init() {}
     pub fn assert_success(_pid: u32, _addr: usize) {}
+    pub fn assert_success_reset_dacl(_pid: u32, _addr: usize) {}
     pub fn assert_failure(_pid: u32) {}
 }
 
 #[cfg(windows)]
 mod platform {
+    use windows::Win32::Security;
     use windows::Win32::System;
     use System::Threading::{PROCESS_ACCESS_RIGHTS, PROCESS_VM_READ};
+
+    const WRITE_DAC: PROCESS_ACCESS_RIGHTS =
+        PROCESS_ACCESS_RIGHTS(windows::Win32::Storage::FileSystem::WRITE_DAC.0);
 
     /// Handle to a process.
     #[derive(Copy, Clone, Debug)]
@@ -99,9 +108,7 @@ mod platform {
         }
 
         pub fn disable_all_privileges(&self) -> anyhow::Result<()> {
-            Ok(unsafe {
-                windows::Win32::Security::AdjustTokenPrivileges(self.0, true, None, 0, None, None)
-            }?)
+            Ok(unsafe { Security::AdjustTokenPrivileges(self.0, true, None, 0, None, None) }?)
         }
     }
 
@@ -109,11 +116,37 @@ mod platform {
         // Apparently GitHub Actions runners get the `SeDebugPrivilege` privilege, which bypasses
         // all DACL checks, so we need to disable privileges before trying to mount the attack.
         let proc = ProcessHandle::current_process();
-        let access = windows::Win32::Security::TOKEN_ADJUST_PRIVILEGES;
+        let access = Security::TOKEN_ADJUST_PRIVILEGES;
         AccessToken::open_process_token(proc, access)
             .expect("could not open process token with `TOKEN_ADJUST_PRIVILEGES` access")
             .disable_all_privileges()
             .expect("could not disable all privileges");
+    }
+
+    pub fn assert_success_reset_dacl(pid: u32, addr: usize) {
+        let mut buf: u32 = 0;
+        let proc = ProcessHandle::open(pid, WRITE_DAC)
+            .expect("error opening child process with `WRITE_DAC` permission");
+        unsafe {
+            Security::Authorization::SetSecurityInfo(
+                proc.0,
+                Security::Authorization::SE_KERNEL_OBJECT,
+                Security::DACL_SECURITY_INFORMATION,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        .ok()
+        .expect("could not unset DACL");
+
+        let proc = ProcessHandle::open(pid, PROCESS_VM_READ)
+            .expect("error opening child process with `PROCESS_VM_READ` permission");
+        proc.read_memory(addr, &mut buf)
+            .expect("error reading child process memory");
+
+        assert_eq!(buf, 37);
     }
 
     pub fn assert_success(pid: u32, addr: usize) {
@@ -129,5 +162,7 @@ mod platform {
     pub fn assert_failure(pid: u32) {
         ProcessHandle::open(pid, PROCESS_VM_READ)
             .expect_err("opened hardened child process with `PROCESS_VM_READ` permission");
+        ProcessHandle::open(pid, WRITE_DAC)
+            .expect_err("opened hardened child process with `WRITE_DAC` permission");
     }
 }

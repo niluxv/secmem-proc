@@ -19,6 +19,7 @@ fn build_test_program() -> escargot::CargoRun {
 fn build_advesary_program() -> escargot::CargoRun {
     escargot::CargoBuild::new()
         .example("test_try_read_mem_windows")
+        .features("dev")
         .run()
         .expect("failed to build test program")
 }
@@ -99,7 +100,7 @@ mod windows {
         });
     }
 
-    // /// Check we cannot read the childs memory when it is hardened.
+    /// Check we cannot read the childs memory when it is hardened.
     #[test]
     fn run_test_program_read_vm_memory_hardened() {
         run_test_program(true, |child, addr| {
@@ -118,6 +119,37 @@ mod windows {
             adv_cmd.arg("assert_failure");
 
             assert_cmd::Command::from_std(adv_cmd).assert().success();
+        });
+    }
+
+    /// Test the attack where we reset the DACL before reading victims memory.
+    #[test]
+    fn run_test_program_read_vm_memory_unhardened_reset_dacl() {
+        run_test_program(false, |child, addr| {
+            let pid = child_pid(child);
+
+            let mut adv_cmd = (*ADVESARY_PROGRAM).command();
+            adv_cmd.arg(pid.to_string());
+            adv_cmd.arg(addr.to_string());
+            adv_cmd.arg("assert_success_reset_dacl");
+
+            let mut cmd = assert_cmd::Command::from_std(adv_cmd);
+            cmd.assert().success();
+        });
+    }
+
+    /// Check we cannot read the childs memory by first resetting the DACL when the victim is hardened.
+    #[test]
+    fn run_test_program_read_vm_memory_hardened_reset_dacl() {
+        run_test_program(true, |child, addr| {
+            let pid = child_pid(child);
+
+            let mut adv_cmd = (*ADVESARY_PROGRAM).command();
+            adv_cmd.arg(pid.to_string());
+            adv_cmd.arg(addr.to_string());
+            adv_cmd.arg("assert_success_reset_dacl");
+
+            assert_cmd::Command::from_std(adv_cmd).assert().failure();
         });
     }
 }
