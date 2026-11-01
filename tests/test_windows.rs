@@ -1,9 +1,8 @@
 use std::{
     io::{BufRead, BufReader, Write},
     process::{Child, Stdio},
+    sync::LazyLock,
 };
-
-use std::sync::LazyLock;
 
 static TEST_PROGRAM: LazyLock<escargot::CargoRun> = LazyLock::new(build_test_program);
 #[cfg(windows)]
