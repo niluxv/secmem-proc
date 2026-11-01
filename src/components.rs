@@ -123,12 +123,12 @@ pub fn set_empty_dacl_winapi() -> Result {
 pub fn set_custom_dacl_winapi(
     access_mask: windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS,
 ) -> Result {
-    use crate::win_acl::TokenUser;
+    use crate::win_acl::SidRef;
     const CTX: &str = "Failed to set a process DACL";
 
-    // First obtain the SID of the current user
-    let user = TokenUser::process_user().context(CTX)?;
-    let sid = user.sid();
+    // First obtain the well-known owner rights SID
+    let mut buf = [0; 4];
+    let sid = SidRef::well_known(&mut buf, windows::Win32::Security::WinCreatorOwnerRightsSid)?;
 
     // Now specify the ACL we want to create
     let acl_spec = crate::win_acl::EmptyAcl;
