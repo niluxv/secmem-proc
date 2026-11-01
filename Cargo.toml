@@ -25,7 +25,7 @@ std = ["anyhow/std", "rustix/std", "dep:rustix-linux-procfs", "thiserror/std"]
 # enable anti-tracing techniques using unstable/undocumented APIs/OS implementation details
 unstable = ["windows/Wdk_System_Threading"]
 # required features to run tests; additional features enable more tests
-dev = []
+dev = ["windows/Win32_Storage_FileSystem"]
 
 [dependencies]
 anyhow = { version = "1.0", default-features = false }
