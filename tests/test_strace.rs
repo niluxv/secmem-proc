@@ -1,7 +1,9 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
+
+#[cfg(target_os = "linux")]
 use predicates::prelude::PredicateBooleanExt;
 
-static TEST_PROGRAM: Lazy<escargot::CargoRun> = Lazy::new(build_test_program);
+static TEST_PROGRAM: LazyLock<escargot::CargoRun> = LazyLock::new(build_test_program);
 
 fn build_test_program() -> escargot::CargoRun {
     escargot::CargoBuild::new()
@@ -13,8 +15,7 @@ fn build_test_program() -> escargot::CargoRun {
 /// Run the program untraced and check that it succeeds, printing "SECRET".
 #[test]
 fn test_untraced() {
-    let test_prog = &*TEST_PROGRAM;
-    let mut cmd = assert_cmd::Command::from_std(test_prog.command());
+    let mut cmd: assert_cmd::Command = (*TEST_PROGRAM).command().into();
     cmd.assert()
         .success()
         .stdout(predicates::str::contains("SECRET"));
@@ -25,9 +26,8 @@ fn test_untraced() {
 #[cfg(target_os = "linux")]
 #[test]
 fn test_strace() {
-    let test_prog = &*TEST_PROGRAM;
     let mut cmd = assert_cmd::Command::new("strace");
-    cmd.arg(test_prog.path());
+    cmd.arg((*TEST_PROGRAM).path());
     cmd.assert()
         .failure()
         .stdout(predicates::str::contains("SECRET").not());
