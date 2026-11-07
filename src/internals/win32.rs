@@ -227,11 +227,11 @@ impl<'a> SidRef<'a> {
     }
 
     pub fn well_known(
-        buf: &'a mut [u64; 4],
+        buf: &'a mut WellKnownSidBuffer,
         well_known_sid_type: win::WELL_KNOWN_SID_TYPE,
     ) -> anyhow::Result<Self> {
         let sid_buf = win::PSID(buf as *mut _ as *mut _);
-        let mut buf_size: u32 = core::mem::size_of::<[u64; 4]>() as u32;
+        let mut buf_size: u32 = core::mem::size_of::<WellKnownSidBuffer>() as u32;
         unsafe {
             win::CreateWellKnownSid(
                 well_known_sid_type,
@@ -242,6 +242,15 @@ impl<'a> SidRef<'a> {
         }?;
         // SAFETY: `buf` lives for 'a, which is the lifetime of the return type
         Ok(unsafe { Self::from_ptr(SidPtr(sid_buf)) })
+    }
+}
+
+#[repr(transparent)]
+pub struct WellKnownSidBuffer(core::mem::MaybeUninit<[u64; 4]>);
+
+impl WellKnownSidBuffer {
+    pub fn new() -> Self {
+        Self(core::mem::MaybeUninit::uninit())
     }
 }
 

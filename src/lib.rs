@@ -87,10 +87,10 @@
 //!     };
 //!     use windows::Win32::Security::WinCreatorOwnerRightsSid;
 //!
-//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef};
+//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef, WellKnownSidBuffer};
 //!
 //!     // First obtain the well-known owner rights SID
-//!     let mut buf = [0; 4];
+//!     let mut buf = WellKnownSidBuffer::new();
 //!     let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 //!
 //!     // Now specify the ACL we want to create
