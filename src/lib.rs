@@ -1,6 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![forbid(future_incompatible, rust_2018_compatibility, unsafe_op_in_unsafe_fn)]
-#![deny(rust_2018_idioms)]
+#![forbid(future_incompatible, unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
 #![warn(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 #![warn(clippy::must_use_candidate)]
 #![allow(clippy::needless_lifetimes)]
@@ -94,7 +94,7 @@
 //!     let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 //!
 //!     // Now specify the ACL we want to create
-//!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else
+//!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; nothing else
 //!     let acl_spec = EmptyAcl;
 //!     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
 //!         | PROCESS_TERMINATE

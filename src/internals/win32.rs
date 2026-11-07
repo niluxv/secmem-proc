@@ -226,6 +226,12 @@ impl<'a> SidRef<'a> {
         self.ptr.is_valid()
     }
 
+    /// Create a [well-known SID].
+    ///
+    /// Specify which well-known SID you need in `well_known_sid_type`, and a buffer to store the
+    /// well-known SID as `buf`. The latter can be created with [`WellKnownSidBuffer::new()`].
+    ///
+    /// [well-known SID]: https://learn.microsoft.com/en-us/windows/win32/secauthz/well-known-sids
     pub fn well_known(
         buf: &'a mut WellKnownSidBuffer,
         well_known_sid_type: win::WELL_KNOWN_SID_TYPE,
@@ -245,10 +251,12 @@ impl<'a> SidRef<'a> {
     }
 }
 
+/// A buffer used by [`SidRef::well_known`].
 #[repr(transparent)]
 pub struct WellKnownSidBuffer(core::mem::MaybeUninit<[u64; 4]>);
 
 impl WellKnownSidBuffer {
+    /// Create a new empty buffer.
     pub fn new() -> Self {
         Self(core::mem::MaybeUninit::uninit())
     }
