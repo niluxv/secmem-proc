@@ -21,10 +21,10 @@
 //!     };
 //!     use windows::Win32::Security::WinCreatorOwnerRightsSid;
 //!
-//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef};
+//!     use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef, WellKnownSidBuffer};
 //!
 //!     // First obtain the well-known owner rights SID
-//!     let mut buf = [0; 4];
+//!     let mut buf = WellKnownSidBuffer::new();
 //!     let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 //!
 //!     // Now specify the ACL we want to create
@@ -58,7 +58,7 @@ mod win {
     pub(super) use windows::Win32::Security::TOKEN_QUERY;
 }
 
-pub use internals::SidRef;
+pub use internals::{SidRef, WellKnownSidBuffer};
 pub use win::PROCESS_ACCESS_RIGHTS as ProcessAccessRights;
 
 /// Completed (initialized) ACL.
@@ -252,7 +252,7 @@ mod tests {
     fn create_allow_ace_acl() {
         use windows::Win32::System::Threading::PROCESS_TERMINATE;
 
-        let mut buf = [0; 4];
+        let mut buf = WellKnownSidBuffer::new();
         let sid = SidRef::well_known(&mut buf, windows::Win32::Security::WinCreatorOwnerRightsSid)
             .expect("could not create well-known owner rights sid");
 
@@ -265,7 +265,7 @@ mod tests {
     fn create_deny_ace_acl() {
         use windows::Win32::System::Threading::PROCESS_CREATE_PROCESS;
 
-        let mut buf = [0; 4];
+        let mut buf = WellKnownSidBuffer::new();
         let sid = SidRef::well_known(&mut buf, windows::Win32::Security::WinCreatorOwnerRightsSid)
             .expect("could not create well-known owner rights sid");
 

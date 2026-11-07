@@ -120,14 +120,12 @@ pub fn set_empty_dacl_winapi() -> Result {
 /// # Errors
 /// Returns an error when the system interface returns an error.
 #[cfg(windows)]
-pub fn set_custom_dacl_winapi(
-    access_mask: windows::Win32::System::Threading::PROCESS_ACCESS_RIGHTS,
-) -> Result {
-    use crate::win_acl::SidRef;
+pub fn set_custom_dacl_winapi(access_mask: crate::win_acl::ProcessAccessRights) -> Result {
+    use crate::win_acl::{SidRef, WellKnownSidBuffer};
     const CTX: &str = "Failed to set a process DACL";
 
     // First obtain the well-known owner rights SID
-    let mut buf = [0; 4];
+    let mut buf = WellKnownSidBuffer::new();
     let sid = SidRef::well_known(&mut buf, windows::Win32::Security::WinCreatorOwnerRightsSid)?;
 
     // Now specify the ACL we want to create
