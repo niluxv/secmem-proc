@@ -339,6 +339,7 @@ impl From<&WinDaclProcessAccess> for windows::Win32::System::Threading::PROCESS_
 }
 
 #[cfg(windows)]
+#[allow(missing_docs)]
 impl WinDaclProcessAccess {
     pub const ALL_ACCESS: Self = Self::new(windows::Win32::System::Threading::PROCESS_ALL_ACCESS);
     pub const CREATE_PROCESS: Self =
@@ -374,6 +375,7 @@ impl WinDaclProcessAccess {
 
 // on non-windows targets just a bunch of dummy constants
 #[cfg(not(windows))]
+#[allow(missing_docs)]
 impl WinDaclProcessAccess {
     pub const ALL_ACCESS: Self = Self(0);
     pub const CREATE_PROCESS: Self = Self(0);

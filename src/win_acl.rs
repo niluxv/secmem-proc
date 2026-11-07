@@ -28,7 +28,7 @@
 //!     let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 //!
 //!     // Now specify the ACL we want to create
-//!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else
+//!     // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; nothing else
 //!     let acl_spec = EmptyAcl;
 //!     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
 //!         | PROCESS_TERMINATE
@@ -140,11 +140,13 @@ mod acl_construction {
     pub struct EmptyAcl;
 
     impl EmptyAcl {
+        /// Create a specification for an empty ACL.
         #[must_use]
         pub fn new() -> Self {
             EmptyAcl
         }
 
+        /// Construct the actual ACL object from an ACL specification.
         pub fn create(self) -> anyhow::Result<Acl> {
             let acl = self.realize_with_size(|_s| {})?;
             Ok(acl.declare_final())
@@ -171,6 +173,14 @@ mod acl_construction {
     }
 
     impl<'a, C: AclConstruction> AddAllowAceAcl<'a, C> {
+        /// Append an access allowed ACE to an ACL specification.
+        ///
+        /// Append an access allowed ACE to `constructor`. `sid` specifies the SID for this ACE,
+        /// and `access_mask` the rights/actions that are granted to this SID.
+        ///
+        /// Notice that windows checks ACEs in an ACL in-order, so for an access denied ACE to
+        /// have priority over access allowed ACEs, you need to *first add access denied ACEs* to
+        /// your ACL specification, and the access allowed ACEs afterwards.
         pub fn new(constructor: C, access_mask: ProcessAccessRights, sid: SidRef<'a>) -> Self {
             AddAllowAceAcl {
                 constructor,
@@ -179,6 +189,7 @@ mod acl_construction {
             }
         }
 
+        /// Construct the actual ACL object from an ACL specification.
         pub fn create(self) -> anyhow::Result<Acl> {
             let acl = self.realize_with_size(|_s| {})?;
             Ok(acl.declare_final())
@@ -207,6 +218,14 @@ mod acl_construction {
     }
 
     impl<'a, C: AclConstruction> AddDenyAceAcl<'a, C> {
+        /// Append an access denied ACE to an ACL specification.
+        ///
+        /// Append an access denied ACE to `constructor`. `sid` specifies the SID for this ACE,
+        /// and `access_mask` the rights/actions that are denied to this SID.
+        ///
+        /// Notice that windows checks ACEs in an ACL in-order, so for an access denied ACE to
+        /// have priority over access allowed ACEs, you need to *first add access denied ACEs* to
+        /// your ACL specification, and the access allowed ACEs afterwards.
         pub fn new(constructor: C, access_mask: ProcessAccessRights, sid: SidRef<'a>) -> Self {
             AddDenyAceAcl {
                 constructor,
@@ -215,6 +234,7 @@ mod acl_construction {
             }
         }
 
+        /// Construct the actual ACL object from an ACL specification.
         pub fn create(self) -> anyhow::Result<Acl> {
             let acl = self.realize_with_size(|_s| {})?;
             Ok(acl.declare_final())
