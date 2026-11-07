@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.3.9 - 2026-11-07
+### Added
+- A `win_acl::SidRef::well_known` method for constructing well-known SIDs. This is now the
+  recommended way to obtain a SID. The previous `win_acl::TokenUser` might be removed in a future
+  `0.4.0` release.
+
+### Security
+- On Windows, for the DACL, an explicit owner SID (taken from the process token) was used. Windows
+  implicitly grants extra access rights to the well-known "owner rights" SID, unless it occurs in
+  the DACL, which it did not. This allows any process under the same user to reset the DACL of our
+  process, making this defence effectively useless. The new code uses the well-known "owner rights"
+  SID, preventing the attack. Users creating a custom DACL with the API from the `win_acl` module
+  are strongly advised to use a well-known "owner rights" SID created using
+  `win_acl::SidRef::well_known` rather than the owner SID returned by `win_acl::TokenUser::sid`.
+
+### Internal
+- Added automated tests checking the effectiveness of the Windows DACL.
+
 ## 0.3.8 - 2025-12-31
 ### Internal
 - Updated `windows` dependency to `0.62`.
@@ -16,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com), and this 
 ## 0.3.6 - 2025-03-18
 ### Changed
 - Implemented `core::error::Error` for error structures even in no-std mode. Note that this
-  increases the MSRV to 1.82 when the (default) `std` feature is disable. With default features
+  increases the MSRV to 1.82 when the (default) `std` feature is disabled. With default features
   the MSRV is unchanged.
 
 ### Internal

@@ -1,4 +1,4 @@
-# secmem-proc ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue) [![secmem-proc on crates.io](https://img.shields.io/crates/v/secmem-proc)](https://crates.io/crates/secmem-proc) [![secmem-proc on docs.rs](https://docs.rs/secmem-proc/badge.svg)](https://docs.rs/secmem-proc) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/niluxv/secmem-proc) ![Rust Version: 1.65.0](https://img.shields.io/badge/rustc-1.65.0-orange.svg)
+# secmem-proc ![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue) [![secmem-proc on crates.io](https://img.shields.io/crates/v/secmem-proc)](https://crates.io/crates/secmem-proc) [![secmem-proc on docs.rs](https://docs.rs/secmem-proc/badge.svg)](https://docs.rs/secmem-proc) [![Source Code Repository](https://img.shields.io/badge/Code-On%20GitHub-blue?logo=GitHub)](https://github.com/niluxv/secmem-proc) [![Rust Version: 1.65.0](https://img.shields.io/badge/rustc-1.65.0-orange.svg)](https://github.com/rust-lang/rust/releases/tag/1.65.0)
 
 `secmem-proc` is a crate designed to harden a process against
 *low-privileged* attackers running on the same system trying to obtain
@@ -83,15 +83,16 @@ fn set_windows_dacl() -> secmem_proc::Result {
         PROCESS_CREATE_THREAD, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
         PROCESS_TERMINATE,
     };
+    use windows::Win32::Security::WinCreatorOwnerRightsSid;
 
-    use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, TokenUser};
+    use secmem_proc::win_acl::{AddAllowAceAcl, EmptyAcl, SidRef, WellKnownSidBuffer};
 
-    // First obtain the SID of the process user
-    let user = TokenUser::process_user()?;
-    let sid = user.sid();
+    // First obtain the well-known owner rights SID
+    let mut buf = WellKnownSidBuffer::new();
+    let sid = SidRef::well_known(&mut buf, WinCreatorOwnerRightsSid)?;
 
     // Now specify the ACL we want to create
-    // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; noting else
+    // Only things explicitly allowed with `AddAllowAceAcl` will be allowed; nothing else
     let acl_spec = EmptyAcl;
     let access_mask = PROCESS_QUERY_LIMITED_INFORMATION
         | PROCESS_TERMINATE
@@ -157,7 +158,7 @@ The hardening methods employed by this crate can be divided into two groups:
 
 The difference between the two lies in the thread model. Process hardening
 mostly assumes the process is not yet under attack, e.g. it is not yet being
-traced. Hardening methods then make changed to the configuration of the
+traced. Hardening methods then make changes to the configuration of the
 process to limit access other processes have to it, e.g. disable tracing of
 the process or disable core dumps. Anti-tracing assumes the process is
 already traced/debugged by a malicious process (malware). The goal is then
@@ -168,12 +169,12 @@ difficult one to work around.) Anti-tracing can be disabled using
 [`Config::set_anti_tracing(false)`][__link7].
 
 
- [__cargo_doc2readme_dependencies_info]: ggGkYW0BYXSEG_W_Gn_kaocAGwCcVPfenh7eGy6gYLEwyIe4G6-xw_FwcbpjYXKEG8lkptmLxZJsG_25AfZOt-uQG6Fho7Wj4MqeG8jUIo7JWaZwYWSBg2tzZWNtZW0tcHJvY2UwLjMuN2tzZWNtZW1fcHJvYw
- [__link0]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=harden::harden_process
- [__link1]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/win_acl/index.html
+ [__cargo_doc2readme_dependencies_info]: ggGmYW0CYXZlMC43LjNhdIQb2o_SNWoR6AAb3_T-k0ODPHwbnQW7uS_D2XsbjVFFtK-lC3BhYvVhcoQbezot1NK1SIIbBbYWtcmQ-NAbDdhQNEtiSAobPIIqV8i4tKZhZIGDa3NlY21lbS1wcm9jZTAuMy45a3NlY21lbV9wcm9j
+ [__link0]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/?search=harden::harden_process
+ [__link1]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/win_acl/index.html
  [__link2]: https://crates.io/crates/windows
- [__link3]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/config/index.html
- [__link4]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/win_acl/index.html
- [__link5]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=config::Config::set_win_dacl_custom_user_perm
- [__link6]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=config::Config
- [__link7]: https://docs.rs/secmem-proc/0.3.7/secmem_proc/?search=config::Config::set_anti_tracing
+ [__link3]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/config/index.html
+ [__link4]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/win_acl/index.html
+ [__link5]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/?search=config::Config::set_win_dacl_custom_user_perm
+ [__link6]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/?search=config::Config
+ [__link7]: https://docs.rs/secmem-proc/0.3.9/secmem_proc/?search=config::Config::set_anti_tracing
